@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const [salesmenAnalysis, setSalesmenAnalysis] = useState<any>(null); // 業務員分析數據
   const [clinicAnalysis, setClinicAnalysis] = useState<any>(null); // 診所分析數據
   const [storeReferralAnalysis, setStoreReferralAnalysis] = useState<any>(null); // 門市轉介分析
+  const [hearingScreeningAnalysis, setHearingScreeningAnalysis] = useState<any>(null); // 聽篩活動來源分析
 
   // 店家選項
   const storeOptions = [
@@ -659,6 +660,60 @@ const App: React.FC = () => {
 
       const storeArray = Object.values(storeSummary).sort((a,b)=>b.total - a.total);
       setStoreReferralAnalysis(storeArray);
+
+      /* ====================== 聽篩活動來源（按月份）分析 ====================== */
+      const hearingSummary: { [key:string]: { month:string; year:number; total:number; potential:number; dealt:number; conversionRate:number; totalAmount:number; } } = {};
+
+      customersArray.forEach(customer => {
+        const sourceVal = (customer['顧客來源'] || customer['顧客來源↵(可複選)'] || '').toString();
+        if (!sourceVal.includes('聽篩')) return; // 僅統計含「聽篩」字樣
+
+        const serviceDate = customer['服務日期'] || customer['初次到店'] || '';
+        if (!serviceDate) return;
+        const date = new Date(serviceDate);
+        if (isNaN(date.getTime())) return;
+
+        const monthKey = `${date.getFullYear()}年${date.getMonth() + 1}月`;
+        if (!hearingSummary[monthKey]) {
+          hearingSummary[monthKey] = { month: monthKey, year: date.getFullYear(), total:0, potential:0, dealt:0, conversionRate:0, totalAmount:0 };
+        }
+
+        hearingSummary[monthKey].total++;
+
+        // PTA & 成交
+        const leftPTA = getEarPTA(customer,'左');
+        const rightPTA = getEarPTA(customer,'右');
+        const isDealtHS = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
+                          customer['是否借機'] === 'TRUE' || customer['是否有借機'] === 'TRUE' ||
+                          customer['是否借機'] === '是' || customer['成交'] === '是' || customer['成交'] === 'TRUE' ||
+                          customer['狀態'] === '成交' || customer['狀態'] === '已成交';
+
+        if (leftPTA > ptaThreshold || rightPTA > ptaThreshold || isDealtHS) {
+          hearingSummary[monthKey].potential++;
+        }
+
+        if (isDealtHS) {
+          hearingSummary[monthKey].dealt++;
+          const dealAmt = parseAmount(customer['成交金額'] || customer['金額'] || customer['價格'] || customer['營業額']);
+          if (!isNaN(dealAmt) && dealAmt > 0) {
+            hearingSummary[monthKey].totalAmount += dealAmt;
+          }
+        }
+      });
+
+      // 計算成交率並排序
+      Object.values(hearingSummary).forEach(item => {
+        item.conversionRate = item.total > 0 ? (item.dealt / item.total) * 100 : 0;
+      });
+
+      const hearingArray = Object.values(hearingSummary).sort((a,b)=> {
+        if (a.year !== b.year) return a.year - b.year;
+        const aMonth = parseInt(a.month.replace(/\d+年(\d+)月/,'$1'));
+        const bMonth = parseInt(b.month.replace(/\d+年(\d+)月/,'$1'));
+        return aMonth - bMonth;
+      });
+
+      setHearingScreeningAnalysis(hearingArray);
     }
   }, [sheetData, dateRange, ptaThreshold]);
 
@@ -823,6 +878,40 @@ const App: React.FC = () => {
   }:null;
 
   const storeChartOptions = {
+    responsive:true,
+    plugins:{ legend:{ position:'top' as const }},
+    scales:{ y:{ beginAtZero:true }},
+  };
+
+  // 聽篩活動圖表資料
+  const hearingChartData = hearingScreeningAnalysis ? {
+    labels: hearingScreeningAnalysis.map((h:any)=>h.month),
+    datasets: [
+      {
+        label: '來客數',
+        data: hearingScreeningAnalysis.map((h:any)=>h.total),
+        backgroundColor: 'rgba(59,130,246,0.6)',
+        borderColor: 'rgba(59,130,246,1)',
+        borderWidth: 1,
+      },
+      {
+        label: '潛力客戶',
+        data: hearingScreeningAnalysis.map((h:any)=>h.potential),
+        backgroundColor: 'rgba(34,197,94,0.6)',
+        borderColor: 'rgba(34,197,94,1)',
+        borderWidth: 1,
+      },
+      {
+        label: '成交數',
+        data: hearingScreeningAnalysis.map((h:any)=>h.dealt),
+        backgroundColor: 'rgba(249,115,22,0.6)',
+        borderColor: 'rgba(249,115,22,1)',
+        borderWidth: 1,
+      },
+    ],
+  }: null;
+
+  const hearingChartOptions = {
     responsive:true,
     plugins:{ legend:{ position:'top' as const }},
     scales:{ y:{ beginAtZero:true }},
@@ -1240,7 +1329,7 @@ const App: React.FC = () => {
             {/* 診所轉介分析 */}
             {clinicAnalysis && clinicAnalysis.length > 0 && (
               <div className="card mt-8">
-                <h3 className="text-lg font-semibold mb-4">診所與聽篩轉介分析</h3>
+                <h3 className="text-lg font-semibold mb-4">診所與其它轉介分析</h3>
                 {clinicChartData && (
                   <div className="chart-wrapper h-80 mb-6 w-full">
                     <Bar data={clinicChartData} options={clinicChartOptions} plugins={[barLabelPlugin]} />
@@ -1299,6 +1388,44 @@ const App: React.FC = () => {
                           <td className="p-2">{s.store}</td>
                           <td className="p-2 text-center">{s.total}</td>
                           <td className="p-2 text-center">{s.potential}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 聽篩活動分析 */}
+            {hearingScreeningAnalysis && hearingScreeningAnalysis.length > 0 && (
+              <div className="card mt-8">
+                <h3 className="text-lg font-semibold mb-4">聽篩活動來源分析</h3>
+                {hearingChartData && (
+                  <div className="chart-wrapper h-80 mb-6 w-full">
+                    <Bar data={hearingChartData} options={hearingChartOptions} plugins={[barLabelPlugin]} />
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-200">
+                        <th className="p-2 text-left">來源</th>
+                        <th className="p-2 text-center">來客數</th>
+                        <th className="p-2 text-center">潛力客戶</th>
+                        <th className="p-2 text-center">成交數</th>
+                        <th className="p-2 text-center">成交率</th>
+                        <th className="p-2 text-center">總金額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hearingScreeningAnalysis.map((h:any,idx:number)=>(
+                        <tr key={idx} className="border-b">
+                          <td className="p-2">{h.month}</td>
+                          <td className="p-2 text-center">{h.total}</td>
+                          <td className="p-2 text-center">{h.potential}</td>
+                          <td className="p-2 text-center">{h.dealt}</td>
+                          <td className="p-2 text-center">{h.conversionRate.toFixed(1)}%</td>
+                          <td className="p-2 text-center">{h.totalAmount.toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
