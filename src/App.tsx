@@ -403,14 +403,15 @@ const App: React.FC = () => {
         const leftEarPTA = getEarPTA(customer, '左');
         const rightEarPTA = getEarPTA(customer, '右');
         
-        // 判斷是否為潛力客戶（左耳PTA或右耳PTA > 設定閾值）
-        const isPotentialCustomer = leftEarPTA > ptaThreshold || rightEarPTA > ptaThreshold;
-        
-        // 判斷是否成交（主要依靠"是否成交"欄位）
+        // 判斷是否成交（主要依靠"是否成交"欄位）先行計算，供潛力判斷使用
         const isDealt = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' || 
-                       customer['是否借機'] === 'TRUE' || customer['是否借機'] === '是' ||
+                       customer['是否借機'] === 'TRUE' || customer['是否有借機'] === 'TRUE' ||
+                       customer['是否借機'] === '是' ||
                        customer['成交'] === '是' || customer['成交'] === 'TRUE' ||
                        customer['狀態'] === '成交' || customer['狀態'] === '已成交';
+
+        // 判斷是否為潛力客戶：左/右 PTA 高於閾值 **或** 已成交
+        const isPotentialCustomer = leftEarPTA > ptaThreshold || rightEarPTA > ptaThreshold || isDealt;
         
         // 如果是潛力客戶
         if (isPotentialCustomer) {
@@ -436,7 +437,8 @@ const App: React.FC = () => {
         let totalAmount = 0;
         salesmanCustomers.forEach(customer => {
           const isDealt = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
-                          customer['是否借機'] === 'TRUE' || customer['是否借機'] === '是' ||
+                          customer['是否借機'] === 'TRUE' || customer['是否有借機'] === 'TRUE' ||
+                          customer['是否借機'] === '是' ||
                           customer['成交'] === '是' || customer['成交'] === 'TRUE' ||
                           customer['狀態'] === '成交' || customer['狀態'] === '已成交';
 
@@ -510,7 +512,10 @@ const App: React.FC = () => {
         // PTA數據判斷
         const leftEarPTA = getEarPTA(customer, '左');
         const rightEarPTA = getEarPTA(customer, '右');
-        const isPotentialCustomer = leftEarPTA > ptaThreshold || rightEarPTA > ptaThreshold;
+        const isDealtClinic = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
+                              customer['是否借機'] === 'TRUE' || customer['成交'] === '是' ||
+                              customer['成交'] === 'TRUE' || customer['狀態'] === '成交' || customer['狀態'] === '已成交';
+        const isPotential = leftEarPTA > ptaThreshold || rightEarPTA > ptaThreshold || isDealtClinic;
         
         // 成交判斷
         const isDealt = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' || 
@@ -521,7 +526,7 @@ const App: React.FC = () => {
         const rawAmountMonthly = customer['成交金額'] || customer['金額'] || customer['價格'] || customer['營業額'] || '';
         const dealAmount = parseAmount(rawAmountMonthly);
         
-        if (isPotentialCustomer) {
+        if (isPotential) {
           customerMonthlyData[monthKey].newCustomers++;
         }
         
@@ -586,7 +591,11 @@ const App: React.FC = () => {
 
         const leftPTA = getEarPTA(customer, '左');
         const rightPTA = getEarPTA(customer, '右');
-        const isPotential = leftPTA > ptaThreshold || rightPTA > ptaThreshold;
+        const isDealtClinic = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
+                              customer['是否借機'] === 'TRUE' || customer['成交'] === '是' ||
+                              customer['成交'] === 'TRUE' || customer['狀態'] === '成交' || customer['狀態'] === '已成交';
+        const isPotential = leftPTA > ptaThreshold || rightPTA > ptaThreshold || isDealtClinic;
+
         if (isPotential) clinicSummary[clinicName].potential++;
 
         const isDealt = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
@@ -640,7 +649,10 @@ const App: React.FC = () => {
 
         const leftPTA = getEarPTA(customer,'左');
         const rightPTA = getEarPTA(customer,'右');
-        if(leftPTA > ptaThreshold || rightPTA > ptaThreshold){
+        const isDealtStore = customer['是否成交'] === '是' || customer['是否成交'] === 'TRUE' ||
+                             customer['是否借機'] === 'TRUE' || customer['成交'] === '是' ||
+                             customer['成交'] === 'TRUE' || customer['狀態'] === '成交' || customer['狀態'] === '已成交';
+        if(leftPTA > ptaThreshold || rightPTA > ptaThreshold || isDealtStore){
           storeSummary[storeNameRaw].potential++;
         }
       });
