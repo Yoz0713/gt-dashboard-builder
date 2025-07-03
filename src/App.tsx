@@ -51,6 +51,7 @@ const App: React.FC = () => {
   const [clinicAnalysis, setClinicAnalysis] = useState<any>(null); // 診所分析數據
   const [storeReferralAnalysis, setStoreReferralAnalysis] = useState<any>(null); // 門市轉介分析
   const [hearingScreeningAnalysis, setHearingScreeningAnalysis] = useState<any>(null); // 聽篩活動來源分析
+  const [activePage, setActivePage] = useState<'dashboard' | 'coupon'>('dashboard'); // 目前菜單頁面
 
   // 店家選項
   const storeOptions = [
@@ -940,7 +941,7 @@ const App: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className={`space-y-6 ${activePage !== 'dashboard' ? 'hidden' : ''}`}>
             {/* User Profile */}
             <div className="card before-report">
               <div className="flex items-center justify-between">
@@ -962,6 +963,22 @@ const App: React.FC = () => {
                   登出
                 </button>
               </div>
+            </div>
+
+            {/* 菜單 */}
+            <div className="card-light before-report flex space-x-4">
+              <button
+                className={`px-4 py-2 rounded ${activePage==='dashboard' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+                onClick={() => setActivePage('dashboard')}
+              >
+                每月Dashboard
+              </button>
+              <button
+                className={`px-4 py-2 rounded ${activePage==='coupon' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+                onClick={() => setActivePage('coupon')}
+              >
+                金鑽券統計分析
+              </button>
             </div>
 
             {/* Sheet URL Input */}
@@ -1433,6 +1450,14 @@ const App: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* 金鑽券統計分析 Placeholder */}
+            {activePage === 'coupon' && (
+              <div className="card mt-8">
+                <h3 className="text-lg font-semibold mb-4">金鑽券統計分析</h3>
+                <p className="text-gray-600">功能開發中，敬請期待...</p>
               </div>
             )}
           </div>
