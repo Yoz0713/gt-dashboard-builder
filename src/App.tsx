@@ -1211,7 +1211,7 @@ const App: React.FC = () => {
                             <div className="text-gray-600">客單價</div>
                             <div className="font-bold text-lg text-blue-600">
                               {customerAnalysis.totalCompletedDeals > 0 
-                                ? `NT$ ${(customerAnalysis.totalAmount / customerAnalysis.totalCompletedDeals).toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` 
+                                ? `NT$ ${Math.round(customerAnalysis.totalAmount / customerAnalysis.totalCompletedDeals).toLocaleString()}`
                                 : 'NT$ 0'}
                             </div>
                           </div>
@@ -1319,7 +1319,7 @@ const App: React.FC = () => {
                           <td className="px-4 py-2 text-sm text-gray-900 border-b">{item.completedDeals}</td>
                           <td className="px-4 py-2 text-sm text-gray-900 border-b">{item.conversionRate.toFixed(1)}%</td>
                           <td className="px-4 py-2 text-sm text-gray-900 border-b">NT$ {item.totalAmount.toLocaleString()}</td>
-                          <td className="px-4 py-2 text-sm text-gray-900 border-b">NT$ {item.averageAmount.toLocaleString()}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900 border-b">NT$ {Math.round(item.averageAmount).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
