@@ -665,8 +665,10 @@ const App: React.FC = () => {
       const hearingSummary: { [key:string]: { month:string; year:number; total:number; potential:number; dealt:number; conversionRate:number; totalAmount:number; } } = {};
 
       customersArray.forEach(customer => {
-        const sourceVal = (customer['顧客來源'] || customer['顧客來源↵(可複選)'] || '').toString();
-        if (!sourceVal.includes('聽篩')) return; // 僅統計含「聽篩」字樣
+        // 嘗試尋找含「顧客來源」字樣的欄位 (可能包含換行/特殊符號)
+        const sourceKey = Object.keys(customer).find(k => k.replace(/\s/g, '').includes('顧客來源'));
+        const sourceVal = sourceKey ? customer[sourceKey] : '';
+        if (!sourceVal || !sourceVal.toString().includes('聽篩')) return; // 僅統計含「聽篩」字樣
 
         const serviceDate = customer['服務日期'] || customer['初次到店'] || '';
         if (!serviceDate) return;
@@ -1409,7 +1411,7 @@ const App: React.FC = () => {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-200">
-                        <th className="p-2 text-left">來源</th>
+                        <th className="p-2 text-left">月份</th>
                         <th className="p-2 text-center">來客數</th>
                         <th className="p-2 text-center">潛力客戶</th>
                         <th className="p-2 text-center">成交數</th>
