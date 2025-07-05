@@ -663,7 +663,7 @@ const App: React.FC = () => {
       setStoreReferralAnalysis(storeArray);
 
       /* ====================== 聽篩活動來源（按月份）分析 ====================== */
-      const hearingSummary: { [key:string]: { month:string; year:number; total:number; potential:number; dealt:number; conversionRate:number; totalAmount:number; } } = {};
+      const hearingSummary: { [key:string]: { month:string; year:number; total:number; potential:number; dealt:number; conversionRate:number; totalAmount:number; names:string[]; } } = {};
 
       customersArray.forEach(customer => {
         // 嘗試尋找含「顧客來源」字樣的欄位 (可能包含換行/特殊符號)
@@ -678,7 +678,7 @@ const App: React.FC = () => {
 
         const monthKey = `${date.getFullYear()}年${date.getMonth() + 1}月`;
         if (!hearingSummary[monthKey]) {
-          hearingSummary[monthKey] = { month: monthKey, year: date.getFullYear(), total:0, potential:0, dealt:0, conversionRate:0, totalAmount:0 };
+          hearingSummary[monthKey] = { month: monthKey, year: date.getFullYear(), total:0, potential:0, dealt:0, conversionRate:0, totalAmount:0, names: [] };
         }
 
         hearingSummary[monthKey].total++;
@@ -702,6 +702,11 @@ const App: React.FC = () => {
             hearingSummary[monthKey].totalAmount += dealAmt;
           }
         }
+
+        // 取得客戶姓名
+        const nameKey = Object.keys(customer).find(k => k.replace(/\s/g,'').includes('姓名') || k.toLowerCase().includes('name'));
+        const customerName = nameKey ? customer[nameKey] : '未命名';
+        hearingSummary[monthKey].names.push(customerName);
       });
 
       // 計算成交率並排序
@@ -1434,6 +1439,7 @@ const App: React.FC = () => {
                         <th className="p-2 text-center">成交數</th>
                         <th className="p-2 text-center">成交率</th>
                         <th className="p-2 text-center">總金額</th>
+                        <th className="p-2 text-left">名單</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1445,6 +1451,7 @@ const App: React.FC = () => {
                           <td className="p-2 text-center">{h.dealt}</td>
                           <td className="p-2 text-center">{h.conversionRate.toFixed(1)}%</td>
                           <td className="p-2 text-center">{h.totalAmount.toLocaleString()}</td>
+                          <td className="p-2 text-left whitespace-pre-wrap">{h.names.join(', ')}</td>
                         </tr>
                       ))}
                     </tbody>
