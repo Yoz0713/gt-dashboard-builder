@@ -1439,7 +1439,6 @@ const App: React.FC = () => {
                         <th className="p-2 text-center">成交數</th>
                         <th className="p-2 text-center">成交率</th>
                         <th className="p-2 text-center">總金額</th>
-                        <th className="p-2 text-left">名單</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1451,7 +1450,6 @@ const App: React.FC = () => {
                           <td className="p-2 text-center">{h.dealt}</td>
                           <td className="p-2 text-center">{h.conversionRate.toFixed(1)}%</td>
                           <td className="p-2 text-center">{h.totalAmount.toLocaleString()}</td>
-                          <td className="p-2 text-left whitespace-pre-wrap">{h.names.join(', ')}</td>
                         </tr>
                       ))}
                     </tbody>
