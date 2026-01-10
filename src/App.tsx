@@ -4,6 +4,7 @@ import { LoginView } from './components/LoginView';
 import { Controls } from './components/Controls';
 import { DashboardStats } from './components/DashboardStats';
 import { AnalysisCharts } from './components/AnalysisCharts';
+import { ComparisonView } from './components/ComparisonView';
 import { DateRange } from './types';
 
 const App: React.FC = () => {
@@ -32,6 +33,7 @@ const App: React.FC = () => {
     endMonth: 12,
   });
   const [ptaThreshold, setPtaThreshold] = useState(40);
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison'>('overview');
 
   // Effect handlers
   const handleSheetUrlSubmit = (e: React.FormEvent) => {
@@ -125,18 +127,39 @@ const App: React.FC = () => {
 
         {!loading && analysisResult && (
           <div className="space-y-8 animate-fade-in print:space-y-4">
-            <div className="flex justify-between items-center mb-6 print:mb-4">
-              <div>
+            {/* Header & Tabs */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 print:hidden">
+              <div className="flex items-center gap-4">
                 <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
                   {dateRange.startYear}年{dateRange.startMonth}月 ~ {dateRange.endYear}年{dateRange.endMonth}月
                 </h2>
-                <p className="text-slate-500 font-medium mt-1">
-                  {spreadsheetTitle || '營運'} 分析報告
-                </p>
               </div>
+
+              {/* Tab Switcher */}
+              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex">
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'overview'
+                      ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  <span>📈</span> 總覽分析
+                </button>
+                <button
+                  onClick={() => setActiveTab('comparison')}
+                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'comparison'
+                      ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  <span>⚖️</span> 區間比較
+                </button>
+              </div>
+
               <button
                 onClick={() => window.print()}
-                className="print:hidden bg-slate-900 text-white px-5 py-2.5 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl active:scale-95"
+                className="bg-slate-900 text-white px-5 py-2.5 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl active:scale-95"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -145,8 +168,17 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            <DashboardStats analysis={analysisResult.customerAnalysis} />
-            <AnalysisCharts analysisResult={analysisResult} />
+            {/* Content Views */}
+            <div className="animate-fade-in">
+              {activeTab === 'overview' ? (
+                <>
+                  <DashboardStats analysis={analysisResult.customerAnalysis} />
+                  <AnalysisCharts analysisResult={analysisResult} />
+                </>
+              ) : (
+                <ComparisonView analysis={analysisResult.customerAnalysis} />
+              )}
+            </div>
           </div>
         )}
       </main>

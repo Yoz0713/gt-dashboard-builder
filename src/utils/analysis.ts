@@ -1,4 +1,4 @@
-import { SheetData, DateRange, CustomerAnalysis } from '../types';
+import { SheetData, DateRange, CustomerAnalysis, PeriodStats } from '../types';
 import { parseAmount, getEarPTA, getHearingLossDegree, parseAge } from './parsers';
 
 export interface AnalysisResult {
@@ -632,6 +632,162 @@ export const analyzeData = (
         return aMonth - bMonth;
     });
 
+    // --- 比較分析數據彙整 (Comparison Buckets) ---
+    const yearBuckets: { [key: string]: PeriodStats } = {};
+    const quarterBuckets: { [key: string]: PeriodStats } = {};
+    const monthBuckets: { [key: string]: PeriodStats } = {};
+
+    const initBucket = (bucketMap: { [key: string]: PeriodStats }, key: string) => {
+        if (!bucketMap[key]) {
+            bucketMap[key] = {
+                period: key,
+                newCustomers: 0,
+                completedDeals: 0,
+                totalAmount: 0,
+                conversionRate: 0,
+                averageOrderValue: 0,
+                ageDistribution: {},
+                sourceDistribution: {},
+                hearingLossDistribution: {},
+                salespersonPerformance: {}
+            };
+        }
+    };
+
+    const updateBucket = (
+        bucketMap: { [key: string]: PeriodStats },
+        key: string,
+        isPotential: boolean,
+        isDealt: boolean,
+        dealAmount: number,
+        age: number,
+        source: string,
+        hearingDegree: string,
+        salesperson: string
+    ) => {
+        initBucket(bucketMap, key);
+        const bucket = bucketMap[key];
+
+        if (isPotential) {
+            bucket.newCustomers++;
+            // Update Age Distribution
+            if (age > 0) {
+                const range = age < 20 ? '20歲以下' :
+                    age >= 90 ? '90歲以上' :
+                        `${Math.floor(age / 10) * 10}-${Math.floor(age / 10) * 10 + 9}歲`;
+                bucket.ageDistribution[range] = (bucket.ageDistribution[range] || 0) + 1;
+            }
+            // Update Source Distribution
+            if (source) {
+                bucket.sourceDistribution[source] = (bucket.sourceDistribution[source] || 0) + 1;
+            }
+            if (hearingDegree && hearingDegree !== 'Check') {
+                bucket.hearingLossDistribution[hearingDegree] = (bucket.hearingLossDistribution[hearingDegree] || 0) + 1;
+            }
+
+            // Update Salesperson Visits (Potential Customers)
+            if (salesperson) {
+                if (!bucket.salespersonPerformance[salesperson]) {
+                    bucket.salespersonPerformance[salesperson] = { visits: 0, deals: 0, revenue: 0 };
+                }
+                bucket.salespersonPerformance[salesperson].visits++;
+            }
+        }
+
+        if (isDealt) {
+            bucket.completedDeals++;
+            if (dealAmount > 0) bucket.totalAmount += dealAmount;
+
+            // Update Salesperson Deals & Revenue
+            if (salesperson) {
+                // Ensure initialized
+                if (!bucket.salespersonPerformance[salesperson]) {
+                    bucket.salespersonPerformance[salesperson] = { visits: 1, deals: 0, revenue: 0 };
+                }
+                bucket.salespersonPerformance[salesperson].deals++;
+                if (dealAmount > 0) {
+                    bucket.salespersonPerformance[salesperson].revenue += dealAmount;
+                }
+            }
+        }
+    };
+
+    // Calculate buckets using customersArray which has normalized data
+    customersArray.forEach(customer => {
+        const serviceDate = customer['服務日期'] || customer['初次到店'] || '';
+        if (!serviceDate) return;
+        const date = new Date(serviceDate);
+        if (isNaN(date.getTime())) return;
+
+        const leftPTA = getEarPTA(customer, '左');
+        const rightPTA = getEarPTA(customer, '右');
+        const worsePTA = Math.max(leftPTA, rightPTA);
+        const isDealt = checkIsDealt(customer);
+        const isPotential = leftPTA > ptaThreshold || rightPTA > ptaThreshold || isDealt;
+
+        const dealRaw = customer['成交金額'] || customer['金額'] || customer['價格'] || customer['營業額'] || '';
+        const dealAmount = parseAmount(dealRaw);
+        const validDealAmount = (!isNaN(dealAmount) && dealAmount > 0) ? dealAmount : 0;
+
+        const age = parseAge(customer['年齡'] || customer['Age'], customer['出生日期'] || customer['生日']);
+
+        // Dynamic Source Key Finding (matching Overview logic)
+        const sourceKey = Object.keys(customer).find(k =>
+            k.includes('來源') || k.toLowerCase().includes('source') || k.includes('渠道')
+        );
+        const sourceVal = (sourceKey ? customer[sourceKey] : '').trim();
+
+        // Fix for store referral fallback logic inside buckets
+        // Fix for store referral fallback logic inside buckets
+        let finalSource = sourceVal;
+        if (sourceVal.includes('門市')) {
+            const storeName = (customer['門市名稱'] || customer['Store'] || '').trim();
+            if (!storeName || ['#N/A', '#REF!', 'N/A'].includes(storeName)) {
+                finalSource = '門市轉介';
+            } else {
+                finalSource = storeName; // Use the specific store name if available
+            }
+        }
+
+        const hearingDegree = worsePTA > ptaThreshold ? getHearingLossDegree(worsePTA) : '';
+
+        // Dynamic Salesperson Key Finding
+        const salesKey = Object.keys(customer).find(k =>
+            k.includes('選配師') || k.toLowerCase().includes('sales') || k.includes('業務') || k.includes('主聽力師')
+        );
+        let salesperson = (salesKey ? customer[salesKey] : '').trim();
+
+        // Normalize Salesperson Name (Title Case)
+        if (salesperson) {
+            salesperson = salesperson.toLowerCase().replace(/(?:^|\s)\S/g, a => a.toUpperCase());
+        }
+
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const quarter = Math.ceil(month / 3);
+
+        const yearKey = `${year}`;
+        const quarterKey = `${year}-Q${quarter}`;
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+
+        // Pass extra data for distributions
+        updateBucket(yearBuckets, yearKey, isPotential, isDealt, validDealAmount, age, finalSource, hearingDegree, salesperson);
+        updateBucket(quarterBuckets, quarterKey, isPotential, isDealt, validDealAmount, age, finalSource, hearingDegree, salesperson);
+        updateBucket(monthBuckets, monthKey, isPotential, isDealt, validDealAmount, age, finalSource, hearingDegree, salesperson);
+    });
+
+    // Calculate rates for buckets
+    const finalizeBuckets = (bucketMap: { [key: string]: PeriodStats }) => {
+        Object.values(bucketMap).forEach(stat => {
+            stat.conversionRate = stat.newCustomers > 0 ? (stat.completedDeals / stat.newCustomers) * 100 : 0;
+            stat.averageOrderValue = stat.completedDeals > 0 ? Math.round(stat.totalAmount / stat.completedDeals) : 0;
+        });
+    };
+
+    finalizeBuckets(yearBuckets);
+    finalizeBuckets(quarterBuckets);
+    finalizeBuckets(monthBuckets);
+
     return {
         customerAnalysis: {
             monthlyData: sortedMonthlyData,
@@ -655,6 +811,9 @@ export const analyzeData = (
                 { day: '週五', ...weekdayStats[5] },
                 { day: '週六', ...weekdayStats[6] },
             ].map(d => ({ ...d, conversionRate: d.visits > 0 ? (d.deals / d.visits) * 100 : 0 })),
+            yearBuckets,
+            quarterBuckets,
+            monthBuckets
         },
         salesmenAnalysis: salesmenAnalysis,
         clinicAnalysis: clinicArray,

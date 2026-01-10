@@ -61,6 +61,23 @@ export interface CustomerAnalysis {
   sourceAnalysis: { source: string; count: number; conversionRate: number }[];
   hearingLossAnalysis: { degree: string; count: number }[];
   weekdayAnalysis: { day: string; visits: number; deals: number; conversionRate: number }[];
+  // Buckets for Comparison
+  yearBuckets: { [key: string]: PeriodStats };
+  quarterBuckets: { [key: string]: PeriodStats };
+  monthBuckets: { [key: string]: PeriodStats };
+}
+
+export interface PeriodStats {
+  period: string; // Label (e.g., "2024", "2024-Q1", "2024-01")
+  newCustomers: number;
+  completedDeals: number;
+  totalAmount: number;
+  conversionRate: number;
+  averageOrderValue: number;
+  ageDistribution: { [key: string]: number };
+  sourceDistribution: { [key: string]: number };
+  hearingLossDistribution: { [key: string]: number };
+  salespersonPerformance: { [key: string]: { visits: number; deals: number; revenue: number } };
 }
 
 export interface DateRange {
