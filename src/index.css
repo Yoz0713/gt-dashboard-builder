@@ -4,42 +4,58 @@
 
 /* --- custom component classes --- */
 @layer components {
-  .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
   }
-  .card-light {
-    @apply bg-gray-50 rounded-lg shadow p-4;
-  }
-  .chart-wrapper { break-inside: avoid; margin-bottom: 1rem !important; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* print helpers */
 @media print {
-  .no-print { display:none !important; }
+  .no-print, .print\:hidden { display:none !important; }
   .before-report { display:none !important; }
+  
   @page {
     size: A4;
-    margin: 5mm;
-    @top-left { content: ''; }
-    @top-center { content: ''; }
-    @top-right { content: ''; }
-    @bottom-left { content: counter(page); }
-    @bottom-center { content: ''; }
-    @bottom-right { content: ''; }
+    margin: 8mm;
   }
-  body { -webkit-print-color-adjust: exact; }
-  .card { page-break-inside: avoid; }
-  .chart-wrapper { break-inside: avoid; margin-bottom: 1rem !important; }
-  .mb-6 { margin-bottom: 0.75rem !important; }
-  .mt-8 { margin-top: 1.25rem !important; }
-  .p-6 { padding: 1rem !important; }
-  .p-4 { padding: 0.75rem !important; }
-  .text-lg { font-size: 0.95rem !important; }
-  /* tighten spacing for report title block */
-  .report-title {
-    margin-top: 2px !important;
-    margin-bottom: 2px !important;
-    padding-top: 2px !important;
-    padding-bottom: 2px !important;
+  
+  body { 
+    -webkit-print-color-adjust: exact !important; 
+    print-color-adjust: exact !important; 
+    background-color: white !important;
+  }
+  
+  .card, .bg-white, .shadow-sm { 
+    box-shadow: none !important; 
+    border: 1px solid #e2e8f0 !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* Ensure charts don't break across pages */
+  canvas {
+      max-height: 300px !important;
+  }
+  
+  /* Force grid layouts to be reasonable for A4 */
+  .grid-cols-1 { display: block !important; }
+  .print\:grid-cols-2 { 
+      display: grid !important; 
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important; 
+      gap: 1rem !important;
+  }
+  .print\:grid-cols-4 { 
+      display: grid !important; 
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important; 
+      gap: 1rem !important;
+  }
+
+  .print\:break-before-page {
+      break-before: page !important;
+      margin-top: 2rem !important;
   }
 } 

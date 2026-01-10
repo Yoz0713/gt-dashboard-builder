@@ -18,6 +18,9 @@ export interface SheetInfo {
 }
 
 export interface SpreadsheetMetadata {
+  properties: {
+    title: string;
+  };
   sheets: SheetInfo[];
 }
 
@@ -53,6 +56,11 @@ export interface CustomerAnalysis {
     earliest: string;
     latest: string;
   };
+  // New Analysis Fields
+  ageAnalysis: { range: string; count: number }[];
+  sourceAnalysis: { source: string; count: number; conversionRate: number }[];
+  hearingLossAnalysis: { degree: string; count: number }[];
+  weekdayAnalysis: { day: string; visits: number; deals: number; conversionRate: number }[];
 }
 
 export interface DateRange {
