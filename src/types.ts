@@ -1,3 +1,9 @@
+export interface SpreadsheetListItem {
+  id: string;
+  title: string;
+  hasCustomerRecord: boolean;
+}
+
 export interface UserProfile {
   id: string;
   name: string;

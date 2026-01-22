@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
-import { UserProfile, SheetData, SheetInfo, DateRange } from '../types';
+import { UserProfile, SheetData, SheetInfo, DateRange, SpreadsheetListItem } from '../types';
 import { fetchUserProfile, fetchSpreadsheetMetadata, fetchSheetData as apiFetchSheetData } from '../services/googleSheets';
+import { fetchSavedSpreadsheets, fetchSpreadsheetData } from '../services/sheetsApi';
 import { analyzeData, AnalysisResult } from '../utils/analysis';
 
 export const useGoogleSheetData = () => {
@@ -15,6 +16,7 @@ export const useGoogleSheetData = () => {
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+    const [savedSpreadsheets, setSavedSpreadsheets] = useState<SpreadsheetListItem[]>([]);
 
     // Google Login
     const login = useGoogleLogin({
@@ -50,6 +52,7 @@ export const useGoogleSheetData = () => {
         setSpreadsheetId('');
         setSpreadsheetTitle('');
         setAnalysisResult(null);
+        setSavedSpreadsheets([]);
         setError('');
     }, []);
 
@@ -103,6 +106,44 @@ export const useGoogleSheetData = () => {
         }
     }, [accessToken, loadSheetData]);
 
+    // 從服務帳戶載入已儲存的試算表列表
+    const loadSavedSpreadsheets = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError('');
+            const spreadsheets = await fetchSavedSpreadsheets();
+            setSavedSpreadsheets(spreadsheets);
+        } catch (err: any) {
+            setError(err.message || 'Failed to fetch saved spreadsheets');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // 從服務帳戶載入選定的試算表資料
+    const loadSavedSpreadsheet = useCallback(async (id: string, title: string) => {
+        try {
+            setLoading(true);
+            setError('');
+            setSpreadsheetId(id);
+            setSpreadsheetTitle(title);
+            setSelectedSheet('來客紀錄');
+            const data = await fetchSpreadsheetData(id);
+            setSheetData(data);
+        } catch (err: any) {
+            setError(err.message || 'Failed to load spreadsheet');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // 登入後自動載入已儲存的試算表列表
+    useEffect(() => {
+        if (user) {
+            loadSavedSpreadsheets();
+        }
+    }, [user, loadSavedSpreadsheets]);
+
     const performAnalysis = useCallback((dateRange: DateRange, ptaThreshold: number) => {
         if (sheetData) {
             const result = analyzeData(sheetData, dateRange, ptaThreshold);
@@ -121,12 +162,15 @@ export const useGoogleSheetData = () => {
         loading,
         error,
         analysisResult,
+        savedSpreadsheets,
         setSpreadsheetId,
         setSelectedSheet,
         login,
         logout,
         loadSpreadsheetMetadata,
         loadSheetData,
+        loadSavedSpreadsheets,
+        loadSavedSpreadsheet,
         performAnalysis
     };
 };

@@ -20,6 +20,8 @@ const App: React.FC = () => {
     login,
     logout,
     loadSpreadsheetMetadata,
+    loadSavedSpreadsheet,
+    savedSpreadsheets,
     performAnalysis,
     spreadsheetTitle
   } = useGoogleSheetData();
@@ -105,6 +107,8 @@ const App: React.FC = () => {
           ptaThreshold={ptaThreshold}
           setPtaThreshold={setPtaThreshold}
           onGenerateAnalysis={handleGenerateAnalysis}
+          savedSpreadsheets={savedSpreadsheets}
+          onSelectSavedSpreadsheet={loadSavedSpreadsheet}
         />
 
         {error && (
@@ -140,8 +144,8 @@ const App: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'overview'
-                      ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                     }`}
                 >
                   <span>📈</span> 總覽分析
@@ -149,8 +153,8 @@ const App: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('comparison')}
                   className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'comparison'
-                      ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                     }`}
                 >
                   <span>⚖️</span> 區間比較

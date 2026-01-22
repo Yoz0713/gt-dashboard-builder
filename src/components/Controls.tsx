@@ -1,5 +1,5 @@
 import React from 'react';
-import { SheetInfo, DateRange } from '../types';
+import { SheetInfo, DateRange, SpreadsheetListItem } from '../types';
 
 interface ControlsProps {
     sheetUrl: string;
@@ -14,6 +14,8 @@ interface ControlsProps {
     ptaThreshold: number;
     setPtaThreshold: (threshold: number) => void;
     onGenerateAnalysis: () => void;
+    savedSpreadsheets: SpreadsheetListItem[];
+    onSelectSavedSpreadsheet: (id: string, title: string) => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -28,7 +30,9 @@ export const Controls: React.FC<ControlsProps> = ({
     spreadsheetTitle,
     ptaThreshold,
     setPtaThreshold,
-    onGenerateAnalysis
+    onGenerateAnalysis,
+    savedSpreadsheets,
+    onSelectSavedSpreadsheet
 }) => {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-8 print:hidden transition-all">
@@ -39,7 +43,39 @@ export const Controls: React.FC<ControlsProps> = ({
                     </svg>
                     資料分析設定
                 </h3>
-                <form onSubmit={handleSheetUrlSubmit} className="flex gap-2 max-w-lg w-full">
+            </div>
+
+            {/* 已儲存試算表選擇 */}
+            {savedSpreadsheets.length > 0 && (
+                <div className="mb-4">
+                    <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">
+                        📊 已儲存的試算表
+                    </label>
+                    <select
+                        onChange={(e) => {
+                            const selected = savedSpreadsheets.find(s => s.id === e.target.value);
+                            if (selected) {
+                                onSelectSavedSpreadsheet(selected.id, selected.title);
+                            }
+                        }}
+                        className="block w-full rounded-lg border-slate-200 text-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border bg-white"
+                    >
+                        <option value="">選擇試算表...</option>
+                        {savedSpreadsheets.map((sheet) => (
+                            <option key={sheet.id} value={sheet.id}>
+                                {sheet.title}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {/* 手動輸入網址 */}
+            <details className="mb-4">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 hover:text-blue-600">
+                    ⚙️ 或手動輸入試算表網址
+                </summary>
+                <form onSubmit={handleSheetUrlSubmit} className="flex gap-2 mt-2">
                     <input
                         type="text"
                         value={sheetUrl}
@@ -54,7 +90,7 @@ export const Controls: React.FC<ControlsProps> = ({
                         讀取
                     </button>
                 </form>
-            </div>
+            </details>
 
             <hr className="border-slate-100 my-4" />
 
