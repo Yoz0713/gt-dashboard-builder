@@ -1,11 +1,10 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getGoogleAuth, getSheetsClient } from '../_lib/googleAuth';
+const { getGoogleAuth, getSheetsClient } = require('../_lib/googleAuth');
 
 /**
  * GET /api/sheets/[id]
  * 讀取指定試算表的「來客紀錄」工作表資料
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req, res) {
     // 只允許 GET 請求
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -47,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sheetName: '來客紀錄',
             values: dataResponse.data.values || [],
         });
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error fetching sheet data:', error);
 
         if (error.code === 404) {
@@ -62,4 +61,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             message: error.message,
         });
     }
-}
+};

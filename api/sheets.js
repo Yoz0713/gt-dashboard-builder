@@ -1,18 +1,11 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getGoogleAuth, getDriveClient, getSheetsClient } from './_lib/googleAuth';
-
-interface SpreadsheetListItem {
-    id: string;
-    title: string;
-    hasCustomerRecord: boolean;
-}
+const { getGoogleAuth, getDriveClient, getSheetsClient } = require('./_lib/googleAuth');
 
 /**
  * GET /api/sheets
  * 列出服務帳戶有權限存取的所有 Google 試算表
  * 並檢查每個試算表是否包含「來客紀錄」工作表
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req, res) {
     // 只允許 GET 請求
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -31,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         const files = driveResponse.data.files || [];
-        const spreadsheets: SpreadsheetListItem[] = [];
+        const spreadsheets = [];
 
         // 檢查每個試算表是否包含「來客紀錄」工作表
         for (const file of files) {
@@ -64,11 +57,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             spreadsheets,
             total: spreadsheets.length,
         });
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error listing spreadsheets:', error);
         return res.status(500).json({
             error: 'Failed to list spreadsheets',
             message: error.message,
         });
     }
-}
+};

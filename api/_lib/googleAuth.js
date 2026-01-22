@@ -1,11 +1,11 @@
-import { google } from 'googleapis';
-import { JWT } from 'google-auth-library';
+const { google } = require('googleapis');
+const { JWT } = require('google-auth-library');
 
 /**
  * 建立 Google 服務帳戶認證客戶端
  * 使用環境變數中的憑證資訊
  */
-export function getGoogleAuth(): JWT {
+function getGoogleAuth() {
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -28,13 +28,15 @@ export function getGoogleAuth(): JWT {
 /**
  * 取得已認證的 Google Sheets API 客戶端
  */
-export function getSheetsClient(auth: JWT) {
+function getSheetsClient(auth) {
     return google.sheets({ version: 'v4', auth });
 }
 
 /**
  * 取得已認證的 Google Drive API 客戶端
  */
-export function getDriveClient(auth: JWT) {
+function getDriveClient(auth) {
     return google.drive({ version: 'v3', auth });
 }
+
+module.exports = { getGoogleAuth, getSheetsClient, getDriveClient };
