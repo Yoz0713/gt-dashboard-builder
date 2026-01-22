@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGoogleSheetData } from './hooks/useGoogleSheetData';
 import { LoginView } from './components/LoginView';
 import { Controls } from './components/Controls';
@@ -62,6 +62,14 @@ const App: React.FC = () => {
   const handleGenerateAnalysis = () => {
     performAnalysis(dateRange, ptaThreshold);
   };
+
+  // 自動觸發分析: 當 sheetData 載入完成時
+  useEffect(() => {
+    if (sheetData) {
+      performAnalysis(dateRange, ptaThreshold);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetData]);
 
   if (!user) {
     return <LoginView onLogin={login} />;
