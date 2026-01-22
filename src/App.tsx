@@ -23,7 +23,8 @@ const App: React.FC = () => {
     loadSavedSpreadsheet,
     savedSpreadsheets,
     performAnalysis,
-    spreadsheetTitle
+    spreadsheetTitle,
+    sheetData
   } = useGoogleSheetData();
 
   // UI Local State for controls
@@ -109,6 +110,7 @@ const App: React.FC = () => {
           onGenerateAnalysis={handleGenerateAnalysis}
           savedSpreadsheets={savedSpreadsheets}
           onSelectSavedSpreadsheet={loadSavedSpreadsheet}
+          hasData={!!analysisResult || !!availableSheets.length || !!sheetData}
         />
 
         {error && (

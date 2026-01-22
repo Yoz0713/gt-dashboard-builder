@@ -16,6 +16,7 @@ interface ControlsProps {
     onGenerateAnalysis: () => void;
     savedSpreadsheets: SpreadsheetListItem[];
     onSelectSavedSpreadsheet: (id: string, title: string) => void;
+    hasData?: boolean;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -32,7 +33,8 @@ export const Controls: React.FC<ControlsProps> = ({
     setPtaThreshold,
     onGenerateAnalysis,
     savedSpreadsheets,
-    onSelectSavedSpreadsheet
+    onSelectSavedSpreadsheet,
+    hasData = false
 }) => {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-8 print:hidden transition-all">
@@ -94,7 +96,7 @@ export const Controls: React.FC<ControlsProps> = ({
 
             <hr className="border-slate-100 my-4" />
 
-            {availableSheets.length > 0 ? (
+            {availableSheets.length > 0 || hasData ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">
