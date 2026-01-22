@@ -98,23 +98,25 @@ export const Controls: React.FC<ControlsProps> = ({
 
             {availableSheets.length > 0 || hasData ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">
-                            選擇工作表
-                        </label>
-                        <select
-                            value={selectedSheet}
-                            onChange={handleSheetChange}
-                            className="block w-full rounded-lg border-slate-200 text-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border bg-slate-50"
-                        >
-                            <option value="">請選擇...</option>
-                            {availableSheets.map((sheet) => (
-                                <option key={sheet.properties.sheetId} value={sheet.properties.title}>
-                                    {sheet.properties.title}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {availableSheets.length > 0 && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">
+                                選擇工作表
+                            </label>
+                            <select
+                                value={selectedSheet}
+                                onChange={handleSheetChange}
+                                className="block w-full rounded-lg border-slate-200 text-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border bg-slate-50"
+                            >
+                                <option value="">請選擇...</option>
+                                {availableSheets.map((sheet) => (
+                                    <option key={sheet.properties.sheetId} value={sheet.properties.title}>
+                                        {sheet.properties.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="md:col-span-2">
                         <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">分析區間 (起~迄)</label>
