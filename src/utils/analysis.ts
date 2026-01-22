@@ -228,8 +228,6 @@ export const analyzeData = (
         const salesman = customer['主聽力師'] || customer['聽力師'] || '未知業務員';
         const leftEarPTA = getEarPTA(customer, '左');
         const rightEarPTA = getEarPTA(customer, '右');
-        const leftDegree = getHearingLossDegree(leftEarPTA);
-        const rightDegree = getHearingLossDegree(rightEarPTA);
 
         // 判斷是否成交
         const isDealt = checkIsDealt(customer);
@@ -299,17 +297,8 @@ export const analyzeData = (
         }
 
 
-
         // --- 平日/假日分析 ---
         // 使用服務日期
-        const serviceDateStr = customer['服務日期'] || customer['初次到店'] || customer['日期字段']; // rowData has 日期字段 but it is not in customer (which maps headers)
-        // Need to retrieve date from somewhere if not in columns.
-        // Actually `customersArray` is mapped from `filteredRows` using headers. 
-        // `filteredRows` has `基本信息.解析日期` which is reliable. 
-        // BUT customersArray is just the header map.
-        // Use the date parsing logic again or rely on the fact that we have '服務日期' or similar in headers usually.
-        // If header is not found, we might fallback to reparsing 'dateStr' if we had access to row.
-        // Simplest is to parse the date string found in customer object if available.
 
         let dateObj: Date | null = null;
         const possibleDateCols = ['服務日期', '初次到店', '日期'];

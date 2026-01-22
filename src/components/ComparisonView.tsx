@@ -54,6 +54,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ analysis }) => {
     // Auto-select top 3 periods when granularity changes
     useEffect(() => {
         setSelectedPeriods(allPeriods.slice(0, 3));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [granularity]);
 
     const togglePeriod = (period: string) => {

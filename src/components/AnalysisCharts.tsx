@@ -11,7 +11,7 @@ import {
     PointElement,
     LineElement,
 } from 'chart.js';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import { AnalysisResult } from '../utils/analysis';
 
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -65,7 +65,7 @@ interface AnalysisChartsProps {
 }
 
 export const AnalysisCharts: React.FC<AnalysisChartsProps> = ({ analysisResult }) => {
-    const { customerAnalysis, salesmenAnalysis, clinicAnalysis, storeReferralAnalysis, hearingScreeningAnalysis } = analysisResult;
+    const { customerAnalysis, salesmenAnalysis, clinicAnalysis, storeReferralAnalysis } = analysisResult;
 
     // --- 1. 月份報告圖表 (Bar + Line) ---
     const monthlyChartData = {
