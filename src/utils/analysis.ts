@@ -1,4 +1,4 @@
-import { SheetData, DateRange, CustomerAnalysis, PeriodStats } from '../types';
+import { SheetData, DateRange, CustomerAnalysis, PeriodStats, CompetitionRankingEntry } from '../types';
 import { parseAmount, getEarPTA, getHearingLossDegree, parseAge } from './parsers';
 
 export interface AnalysisResult {
@@ -7,6 +7,7 @@ export interface AnalysisResult {
     clinicAnalysis: any;
     storeReferralAnalysis: any;
     hearingScreeningAnalysis: any;
+    competitionRankingAnalysis: CompetitionRankingEntry[];
 }
 
 export const analyzeData = (
@@ -177,6 +178,18 @@ export const analyzeData = (
             const val = (customer[key] || '').trim();
             return ['是', 'TRUE', 'True', 'true', '成交', '已成交', 'OK', 'Success'].includes(val);
         });
+    };
+
+    const invalidStoreNames = new Set(['', '#N/A', 'N/A', '#REF!']);
+    const storeNameHeader = headers.find(header =>
+        header.includes('轉介門市') ||
+        header.includes('門市名稱') ||
+        header.toLowerCase().includes('store')
+    ) || headers[11];
+
+    const getStoreReferralName = (customer: { [key: string]: string }) => {
+        const rawStoreName = storeNameHeader ? (customer[storeNameHeader] || '').trim() : '';
+        return invalidStoreNames.has(rawStoreName) ? '' : rawStoreName;
     };
 
     // 新增分析變數
@@ -505,26 +518,10 @@ export const analyzeData = (
 
     /* ====================== 門市轉介分析 ====================== */
     const storeSummary: { [key: string]: { store: string; total: number; potential: number; dealt: number; totalAmount: number; conversionRate: number; } } = {};
-    const storeNameHeader = headers[11]; // L欄位 (0-indexed: 11)
 
     customersArray.forEach(customer => {
-        // 1. 檢查來源是否為「門市轉介」
-        const sourceKey = Object.keys(customer).find(k =>
-            k.includes('來源') || k.toLowerCase().includes('source') || k.includes('渠道')
-        );
-        const sourceVal = sourceKey ? (customer[sourceKey] || '').trim() : '';
-
-        // 簡單判斷：包含「門市」且不包含「自帶」(? User only said Source is store referral)
-        // Let's broaden to just check if source implies referral from a store.
-        // User said: "當來源是門市轉介時".
-        if (!sourceVal.includes('門市')) return;
-
-        // 2. 取得 L 欄位 (Store Name)
-        // headers[11] is the key.
-        let storeName = storeNameHeader ? (customer[storeNameHeader] || '').trim() : '';
-        if (!storeName || storeName === '#N/A' || storeName === 'N/A') {
-            storeName = '未填寫門市';
-        }
+        const storeName = getStoreReferralName(customer);
+        if (!storeName) return;
 
         if (!storeSummary[storeName]) {
             storeSummary[storeName] = {
@@ -564,6 +561,29 @@ export const analyzeData = (
     });
 
     const storeArray = Object.values(storeSummary).sort((a, b) => b.total - a.total);
+
+    const competitionRankingAnalysis: CompetitionRankingEntry[] = Object.values(storeSummary)
+        .map(store => ({
+            rank: 0,
+            storeName: store.store,
+            potentialCustomers: store.potential,
+            nonPotentialCustomers: Math.max(store.total - store.potential, 0),
+        }))
+        .sort((a, b) => {
+            if (b.potentialCustomers !== a.potentialCustomers) {
+                return b.potentialCustomers - a.potentialCustomers;
+            }
+
+            if (b.nonPotentialCustomers !== a.nonPotentialCustomers) {
+                return b.nonPotentialCustomers - a.nonPotentialCustomers;
+            }
+
+            return a.storeName.localeCompare(b.storeName);
+        })
+        .map((entry, index) => ({
+            ...entry,
+            rank: index + 1,
+        }));
 
     /* ====================== 聽篩活動來源（按月份）分析 ====================== */
     const hearingSummary: { [key: string]: { month: string; year: number; total: number; potential: number; dealt: number; conversionRate: number; totalAmount: number; names: string[]; } } = {};
@@ -726,16 +746,10 @@ export const analyzeData = (
         );
         const sourceVal = (sourceKey ? customer[sourceKey] : '').trim();
 
-        // Fix for store referral fallback logic inside buckets
-        // Fix for store referral fallback logic inside buckets
         let finalSource = sourceVal;
-        if (sourceVal.includes('門市')) {
-            const storeName = (customer['門市名稱'] || customer['Store'] || '').trim();
-            if (!storeName || ['#N/A', '#REF!', 'N/A'].includes(storeName)) {
-                finalSource = '門市轉介';
-            } else {
-                finalSource = storeName; // Use the specific store name if available
-            }
+        const storeReferralName = getStoreReferralName(customer);
+        if (storeReferralName) {
+            finalSource = storeReferralName;
         }
 
         const hearingDegree = worsePTA > ptaThreshold ? getHearingLossDegree(worsePTA) : '';
@@ -808,5 +822,6 @@ export const analyzeData = (
         clinicAnalysis: clinicArray,
         storeReferralAnalysis: storeArray,
         hearingScreeningAnalysis: hearingArray,
+        competitionRankingAnalysis,
     };
 };

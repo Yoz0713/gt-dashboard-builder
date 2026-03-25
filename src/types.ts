@@ -73,6 +73,13 @@ export interface CustomerAnalysis {
   monthBuckets: { [key: string]: PeriodStats };
 }
 
+export interface CompetitionRankingEntry {
+  rank: number;
+  storeName: string;
+  potentialCustomers: number;
+  nonPotentialCustomers: number;
+}
+
 export interface PeriodStats {
   period: string; // Label (e.g., "2024", "2024-Q1", "2024-01")
   newCustomers: number;

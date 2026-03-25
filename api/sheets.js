@@ -6,6 +6,10 @@ const { getGoogleAuth, getDriveClient, getSheetsClient } = require('./_lib/googl
  * 並檢查每個試算表是否包含「來客紀錄」工作表
  */
 module.exports = async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     // 只允許 GET 請求
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });

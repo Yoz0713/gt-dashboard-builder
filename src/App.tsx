@@ -5,6 +5,7 @@ import { Controls } from './components/Controls';
 import { DashboardStats } from './components/DashboardStats';
 import { AnalysisCharts } from './components/AnalysisCharts';
 import { ComparisonView } from './components/ComparisonView';
+import { CompetitionRanking } from './components/CompetitionRanking';
 import { DateRange } from './types';
 
 const App: React.FC = () => {
@@ -36,7 +37,7 @@ const App: React.FC = () => {
     endMonth: 12,
   });
   const [ptaThreshold, setPtaThreshold] = useState(40);
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'competition'>('overview');
 
   // Effect handlers
   const handleSheetUrlSubmit = (e: React.FormEvent) => {
@@ -169,6 +170,15 @@ const App: React.FC = () => {
                 >
                   <span>⚖️</span> 區間比較
                 </button>
+                <button
+                  onClick={() => setActiveTab('competition')}
+                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'competition'
+                    ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  <span>🏆</span> 競賽排行
+                </button>
               </div>
 
               <button
@@ -189,8 +199,10 @@ const App: React.FC = () => {
                   <DashboardStats analysis={analysisResult.customerAnalysis} />
                   <AnalysisCharts analysisResult={analysisResult} />
                 </>
-              ) : (
+              ) : activeTab === 'comparison' ? (
                 <ComparisonView analysis={analysisResult.customerAnalysis} />
+              ) : (
+                <CompetitionRanking entries={analysisResult.competitionRankingAnalysis} />
               )}
             </div>
           </div>

@@ -5,6 +5,10 @@ const { getGoogleAuth, getSheetsClient } = require('../_lib/googleAuth');
  * 讀取指定試算表的「來客紀錄」工作表資料
  */
 module.exports = async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     // 只允許 GET 請求
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
