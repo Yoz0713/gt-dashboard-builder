@@ -81,3 +81,12 @@ export const fetchSpreadsheetData = async (spreadsheetId: string): Promise<Sheet
     const data = await response.json();
     return { values: data.values };
 };
+
+export const fetchMultipleSpreadsheets = async (spreadsheetIds: string[]): Promise<{ spreadsheetId: string; sheetData: SheetData }[]> => {
+    return Promise.all(
+        spreadsheetIds.map(async (spreadsheetId) => ({
+            spreadsheetId,
+            sheetData: await fetchSpreadsheetData(spreadsheetId),
+        }))
+    );
+};

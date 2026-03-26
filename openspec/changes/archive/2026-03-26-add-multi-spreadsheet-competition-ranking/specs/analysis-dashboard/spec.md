@@ -1,8 +1,5 @@
-# analysis-dashboard Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-competition-ranking-report. Update Purpose after archive.
-## Requirements
 ### Requirement: 分析儀表板必須提供競賽排行入口
 系統 MUST 在既有分析儀表板的報表切換區保留「競賽排行」入口，並提供競賽專用的已儲存試算表複選範圍。總覽分析與區間比較 MUST 繼續沿用目前主試算表的分析結果，不得因競賽複選範圍改變而被覆蓋。
 
@@ -29,6 +26,8 @@ TBD - created by archiving change add-competition-ranking-report. Update Purpose
 - **WHEN** 使用者調整競賽排行的已儲存試算表複選範圍後再切回區間比較
 - **THEN** 系統 MUST 照常顯示目前主試算表的既有比較資料與圖表，且不因競賽排行的整合資料而缺少資料或發生錯誤
 
+## ADDED Requirements
+
 ### Requirement: 競賽排行必須沿用主畫面的日期區間
 系統 MUST 將主畫面目前選定的分析區間套用到競賽排行的多試算表整合資料上，確保競賽週期與其他報表使用同一段時間範圍。
 
@@ -49,4 +48,3 @@ TBD - created by archiving change add-competition-ranking-report. Update Purpose
 #### Scenario: 已達上限時阻止繼續選取
 - **WHEN** 使用者已選取 10 份試算表後再嘗試勾選第 11 份
 - **THEN** 系統 MUST 阻止該次選取並顯示已達上限提示
-

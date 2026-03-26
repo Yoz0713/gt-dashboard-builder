@@ -8,6 +8,7 @@ build/
 # Production
 .env
 .env.*
+.vercel/
 
 # Logs
 npm-debug.log*
@@ -31,3 +32,6 @@ coverage/
 # Package archive
 yarn.lock.pack
 *.tgz 
+
+.vercel
+.env*.local

@@ -67,6 +67,13 @@ describe('App report tabs', () => {
                 competitionRankingAnalysis: [],
             },
             savedSpreadsheets: [],
+            selectedCompetitionSpreadsheetIds: ['saved-1'],
+            competitionRankingEntries: [],
+            competitionSkippedSpreadsheets: [],
+            competitionLoading: false,
+            competitionError: '',
+            competitionSelectionMessage: '',
+            competitionSelectionLimit: 10,
             setSpreadsheetId: jest.fn(),
             setSelectedSheet: jest.fn(),
             login: jest.fn(),
@@ -76,6 +83,8 @@ describe('App report tabs', () => {
             loadSavedSpreadsheets: jest.fn(),
             loadSavedSpreadsheet: jest.fn(),
             performAnalysis: jest.fn(),
+            toggleCompetitionSpreadsheetSelection: jest.fn(),
+            loadCompetitionRanking: jest.fn(),
         });
     });
 

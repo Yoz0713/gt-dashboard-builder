@@ -11,7 +11,6 @@ import { DateRange } from './types';
 const App: React.FC = () => {
   const {
     user,
-    // accessToken, // Not directly used in UI, managed by hook
     availableSheets,
     selectedSheet,
     loadSheetData,
@@ -25,7 +24,16 @@ const App: React.FC = () => {
     savedSpreadsheets,
     performAnalysis,
     spreadsheetTitle,
-    sheetData
+    sheetData,
+    selectedCompetitionSpreadsheetIds,
+    competitionRankingEntries,
+    competitionSkippedSpreadsheets,
+    competitionLoading,
+    competitionError,
+    competitionSelectionMessage,
+    competitionSelectionLimit,
+    toggleCompetitionSpreadsheetSelection,
+    loadCompetitionRanking,
   } = useGoogleSheetData();
 
   // UI Local State for controls
@@ -71,6 +79,12 @@ const App: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetData]);
+
+  useEffect(() => {
+    if (analysisResult) {
+      loadCompetitionRanking(dateRange, ptaThreshold);
+    }
+  }, [analysisResult, dateRange, ptaThreshold, selectedCompetitionSpreadsheetIds, loadCompetitionRanking]);
 
   if (!user) {
     return <LoginView onLogin={login} />;
@@ -202,7 +216,18 @@ const App: React.FC = () => {
               ) : activeTab === 'comparison' ? (
                 <ComparisonView analysis={analysisResult.customerAnalysis} />
               ) : (
-                <CompetitionRanking entries={analysisResult.competitionRankingAnalysis} />
+                <CompetitionRanking
+                  entries={competitionRankingEntries}
+                  loading={competitionLoading}
+                  error={competitionError}
+                  selectedSpreadsheetCount={selectedCompetitionSpreadsheetIds.length}
+                  skippedSpreadsheets={competitionSkippedSpreadsheets}
+                  savedSpreadsheets={savedSpreadsheets}
+                  selectedCompetitionSpreadsheetIds={selectedCompetitionSpreadsheetIds}
+                  onToggleCompetitionSpreadsheet={toggleCompetitionSpreadsheetSelection}
+                  competitionSelectionLimit={competitionSelectionLimit}
+                  competitionSelectionMessage={competitionSelectionMessage}
+                />
               )}
             </div>
           </div>

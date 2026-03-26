@@ -1,4 +1,13 @@
-import { SheetData, DateRange, CustomerAnalysis, PeriodStats, CompetitionRankingEntry } from '../types';
+import {
+    SheetData,
+    DateRange,
+    CustomerAnalysis,
+    PeriodStats,
+    CompetitionRankingEntry,
+    CompetitionRankingAggregateResult,
+    CompetitionRankingSkippedSpreadsheet,
+    CompetitionSheetSource,
+} from '../types';
 import { parseAmount, getEarPTA, getHearingLossDegree, parseAge } from './parsers';
 
 export interface AnalysisResult {
@@ -9,6 +18,188 @@ export interface AnalysisResult {
     hearingScreeningAnalysis: any;
     competitionRankingAnalysis: CompetitionRankingEntry[];
 }
+
+const INVALID_STORE_NAMES = new Set(['', '#N/A', 'N/A', '#REF!']);
+
+const normalizeHeader = (header: string) => header.replace(/\s/g, '').toLowerCase();
+
+const findDateColumnIndex = (headers: string[]) => {
+    const preferredPatterns = [
+        '服務日期',
+        '初次到店',
+        '初次到店日期',
+        '來店日期',
+        '日期',
+        'date',
+    ];
+
+    for (const pattern of preferredPatterns) {
+        const index = headers.findIndex((header) => normalizeHeader(header).includes(pattern.toLowerCase()));
+        if (index !== -1) {
+            return index;
+        }
+    }
+
+    return -1;
+};
+
+const findStoreNameHeader = (headers: string[]) => {
+    const preferredPatterns = [
+        '轉介門市名稱',
+        '轉介門市',
+        '轉介店',
+        '轉介店別',
+        '門市名稱',
+        'store',
+    ];
+
+    for (const pattern of preferredPatterns) {
+        const matchedHeader = headers.find((header) => normalizeHeader(header).includes(pattern.toLowerCase()));
+        if (matchedHeader) {
+            return matchedHeader;
+        }
+    }
+
+    return headers[11];
+};
+
+const parseSheetDate = (value: string | undefined): Date | null => {
+    const dateStr = (value || '').trim();
+    if (!dateStr) return null;
+
+    let date: Date | null = null;
+    const dateFormats = [
+        /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/,
+        /(\d{1,2})[/-](\d{1,2})[/-](\d{4})/,
+        /(\d{4})年(\d{1,2})月(\d{1,2})日?/,
+    ];
+
+    for (const format of dateFormats) {
+        const match = dateStr.match(format);
+        if (match) {
+            if (format === dateFormats[0]) {
+                date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+            } else if (format === dateFormats[1]) {
+                date = new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
+            } else {
+                date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+            }
+            break;
+        }
+    }
+
+    if (!date) {
+        date = new Date(dateStr);
+    }
+
+    return date && !isNaN(date.getTime()) ? date : null;
+};
+
+const isDateInRange = (date: Date, dateRange: DateRange) => {
+    const startDate = new Date(dateRange.startYear, dateRange.startMonth - 1, 1);
+    const endDate = new Date(dateRange.endYear, dateRange.endMonth, 0);
+
+    return date >= startDate && date <= endDate;
+};
+
+const getValidStoreName = (customer: { [key: string]: string }, storeNameHeader?: string) => {
+    if (!storeNameHeader) return '';
+    const rawStoreName = (customer[storeNameHeader] || '').trim();
+    return INVALID_STORE_NAMES.has(rawStoreName) ? '' : rawStoreName;
+};
+
+export const aggregateCompetitionRankings = (
+    sources: CompetitionSheetSource[],
+    dateRange: DateRange,
+    ptaThreshold: number
+): CompetitionRankingAggregateResult => {
+    const rankingMap: Record<string, CompetitionRankingEntry> = {};
+    const skippedSpreadsheets: CompetitionRankingSkippedSpreadsheet[] = [];
+
+    sources.forEach(({ spreadsheetId, spreadsheetTitle, sheetData }) => {
+        if (!sheetData.values || sheetData.values.length < 2) {
+            skippedSpreadsheets.push({
+                spreadsheetId,
+                spreadsheetTitle,
+                reason: '資料列不足，無法納入競賽排行。',
+            });
+            return;
+        }
+
+        const headers = sheetData.values[0];
+        const dateColumnIndex = findDateColumnIndex(headers);
+        const storeNameHeader = findStoreNameHeader(headers);
+
+        if (dateColumnIndex === -1 || !storeNameHeader) {
+            skippedSpreadsheets.push({
+                spreadsheetId,
+                spreadsheetTitle,
+                reason: '缺少服務日期或轉介門市欄位，無法納入競賽排行。',
+            });
+            return;
+        }
+
+        for (let i = 1; i < sheetData.values.length; i++) {
+            const row = sheetData.values[i];
+            if (!row) continue;
+
+            const rowDate = parseSheetDate(row[dateColumnIndex]);
+            if (!rowDate || !isDateInRange(rowDate, dateRange)) {
+                continue;
+            }
+
+            const customer: { [key: string]: string } = {};
+            headers.forEach((header, index) => {
+                customer[header] = row[index] || '';
+            });
+
+            const storeName = getValidStoreName(customer, storeNameHeader);
+            if (!storeName) {
+                continue;
+            }
+
+            if (!rankingMap[storeName]) {
+                rankingMap[storeName] = {
+                    rank: 0,
+                    storeName,
+                    totalReferrals: 0,
+                    hearingLossCustomers: 0,
+                    normalCustomers: 0,
+                };
+            }
+
+            const leftEarPTA = getEarPTA(customer, '左');
+            const rightEarPTA = getEarPTA(customer, '右');
+            const isHearingLossCustomer = leftEarPTA > ptaThreshold || rightEarPTA > ptaThreshold;
+
+            rankingMap[storeName].totalReferrals++;
+
+            if (isHearingLossCustomer) {
+                rankingMap[storeName].hearingLossCustomers++;
+            } else {
+                rankingMap[storeName].normalCustomers++;
+            }
+        }
+    });
+
+    const entries = Object.values(rankingMap)
+        .sort((a, b) => {
+            if (b.totalReferrals !== a.totalReferrals) {
+                return b.totalReferrals - a.totalReferrals;
+            }
+
+            return a.storeName.localeCompare(b.storeName);
+        })
+        .map((entry, index) => ({
+            ...entry,
+            rank: index + 1,
+        }));
+
+    return {
+        entries,
+        skippedSpreadsheets,
+    };
+};
 
 export const analyzeData = (
     sheetData: SheetData,
@@ -22,9 +213,7 @@ export const analyzeData = (
     const headers = values[0];
 
     // 尋找相關欄位
-    const dateColumnIndex = headers.findIndex(header =>
-        header.includes('初次到店') || header.includes('日期') || header.includes('Date')
-    );
+    const dateColumnIndex = findDateColumnIndex(headers);
     const statusColumnIndex = headers.findIndex(header =>
         header.includes('成交') || header.includes('狀態') || header.includes('Status')
     );
@@ -62,43 +251,14 @@ export const analyzeData = (
         const dateStr = values[i][dateColumnIndex].trim();
         if (!dateStr) continue;
 
-        // 解析日期
-        let date: Date | null = null;
-        const dateFormats = [
-            /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/,
-            /(\d{1,2})[/-](\d{1,2})[/-](\d{4})/,
-            /(\d{4})年(\d{1,2})月(\d{1,2})日?/,
-        ];
-
-        for (const format of dateFormats) {
-            const match = dateStr.match(format);
-            if (match) {
-                if (format === dateFormats[0]) {
-                    date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-                } else if (format === dateFormats[1]) {
-                    date = new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
-                } else if (format === dateFormats[2]) {
-                    date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-                }
-                break;
-            }
-        }
-
-        if (!date) {
-            date = new Date(dateStr);
-            if (isNaN(date.getTime())) continue;
-        }
-
+        const date = parseSheetDate(dateStr);
         if (!date || isNaN(date.getTime())) continue;
 
         // 檢查是否在選擇的月份區間內
         const dataYear = date.getFullYear();
         const dataMonth = date.getMonth() + 1;
 
-        const startDate = new Date(dateRange.startYear, dateRange.startMonth - 1, 1);
-        const endDate = new Date(dateRange.endYear, dateRange.endMonth, 0);
-
-        if (date < startDate || date > endDate) continue;
+        if (!isDateInRange(date, dateRange)) continue;
 
         // 將符合條件的資料行添加到篩選結果中，包含所有欄位的詳細信息
         const rowData: any = {
@@ -180,17 +340,9 @@ export const analyzeData = (
         });
     };
 
-    const invalidStoreNames = new Set(['', '#N/A', 'N/A', '#REF!']);
-    const storeNameHeader = headers.find(header =>
-        header.includes('轉介門市') ||
-        header.includes('門市名稱') ||
-        header.toLowerCase().includes('store')
-    ) || headers[11];
+    const storeNameHeader = findStoreNameHeader(headers) || headers[11];
 
-    const getStoreReferralName = (customer: { [key: string]: string }) => {
-        const rawStoreName = storeNameHeader ? (customer[storeNameHeader] || '').trim() : '';
-        return invalidStoreNames.has(rawStoreName) ? '' : rawStoreName;
-    };
+    const getStoreReferralName = (customer: { [key: string]: string }) => getValidStoreName(customer, storeNameHeader);
 
     // 新增分析變數
     const ageGroups: { [key: string]: number } = {
@@ -562,28 +714,11 @@ export const analyzeData = (
 
     const storeArray = Object.values(storeSummary).sort((a, b) => b.total - a.total);
 
-    const competitionRankingAnalysis: CompetitionRankingEntry[] = Object.values(storeSummary)
-        .map(store => ({
-            rank: 0,
-            storeName: store.store,
-            potentialCustomers: store.potential,
-            nonPotentialCustomers: Math.max(store.total - store.potential, 0),
-        }))
-        .sort((a, b) => {
-            if (b.potentialCustomers !== a.potentialCustomers) {
-                return b.potentialCustomers - a.potentialCustomers;
-            }
-
-            if (b.nonPotentialCustomers !== a.nonPotentialCustomers) {
-                return b.nonPotentialCustomers - a.nonPotentialCustomers;
-            }
-
-            return a.storeName.localeCompare(b.storeName);
-        })
-        .map((entry, index) => ({
-            ...entry,
-            rank: index + 1,
-        }));
+    const competitionRankingAnalysis = aggregateCompetitionRankings(
+        [{ spreadsheetId: 'current-sheet', spreadsheetTitle: 'Current Sheet', sheetData }],
+        dateRange,
+        ptaThreshold
+    ).entries;
 
     /* ====================== 聽篩活動來源（按月份）分析 ====================== */
     const hearingSummary: { [key: string]: { month: string; year: number; total: number; potential: number; dealt: number; conversionRate: number; totalAmount: number; names: string[]; } } = {};

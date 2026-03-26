@@ -44,17 +44,53 @@ cd gt-dashboard-builder
 npm install
 ```
 
-3. Create a `.env` file in the root directory:
+3. Create a `.env` or `.env.local` file in the root directory:
 ```bash
 REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id-here.apps.googleusercontent.com
 ```
 
-4. Start the development server:
+4. Link the local project to Vercel:
 ```bash
-npm start
+npm run vercel:link
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. Pull environment variables from Vercel:
+```bash
+npm run vercel:env:pull
+```
+
+6. Start local development with the official Vercel CLI:
+```bash
+npm run vercel:dev
+```
+
+7. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## Local Development Without Extensions
+
+This project includes Vercel API routes under `api/`, so plain `npm start` only runs the CRA frontend and does not serve the local `/api` endpoints.
+
+Use the official Vercel CLI instead of any browser or editor extension:
+
+```bash
+npm run vercel:dev
+```
+
+Useful commands:
+
+- `npm run vercel:link`: link this folder to the target Vercel project
+- `npm run vercel:env:pull`: pull remote environment variables into `.env.local`
+- `npm run vercel:dev`: run frontend plus local Vercel API routes
+- `npm run vercel:dev:listen`: same as above, explicitly binding to port `3000`
+- `npm run dev` / `npm start`: CRA frontend only, without Vercel API routes
+
+### Recommended Secure Workflow
+
+- Use only the official `vercel` CLI included in this repo
+- Avoid third-party browser or IDE extensions for local API routing
+- Keep `.vercel/` and `.env.local` out of version control
+- Prefer a least-privilege Vercel account or token for local development
+- Rotate tokens if you suspect a local machine compromise
 
 ## Usage
 
@@ -101,6 +137,12 @@ The application requests the following Google API scopes:
 - Make sure you have read access to the Google Sheet
 - Check if the sheet URL is correctly formatted
 - Ensure the sheet contains data in the expected format
+
+### Local API Routes Not Working
+- Run `npm run vercel:dev` instead of `npm start`
+- If the folder is not linked yet, run `npm run vercel:link`
+- If local secrets are missing, run `npm run vercel:env:pull`
+- Do not rely on browser or editor extensions to proxy `/api`
 
 ### Chart Not Displaying
 - Verify that Column B contains numeric data

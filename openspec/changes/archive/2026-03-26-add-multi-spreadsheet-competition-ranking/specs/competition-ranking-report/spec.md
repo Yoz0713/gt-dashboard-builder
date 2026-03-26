@@ -1,8 +1,5 @@
-# competition-ranking-report Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-competition-ranking-report. Update Purpose after archive.
-## Requirements
 ### Requirement: 系統必須提供競賽排行報表
 系統 MUST 在現有報表分析流程中提供「競賽排行」視圖，讓使用者在選定一份以上已儲存試算表作為競賽資料範圍後，切換查看跨試算表整合的門市轉介排行結果。
 
@@ -20,6 +17,8 @@ TBD - created by archiving change add-competition-ranking-report. Update Purpose
 #### Scenario: 轉介門市名稱未填寫時排除
 - **WHEN** 資料列的轉介門市名稱欄位為空值、`#N/A`、`N/A` 或其他無效值
 - **THEN** 系統 MUST 不將該資料列納入競賽排行統計
+
+## ADDED Requirements
 
 ### Requirement: 系統必須依轉介門市統計總轉介人次
 系統 MUST 針對所有已選定競賽試算表中符合日期區間的資料，依轉介門市分組計算總轉介人次；同一轉介門市轉介到不同聽力中心的資料 MUST 合併為同一筆總數。僅有「轉介門市」欄位具有有效值的資料列才會被納入計算。
@@ -76,3 +75,12 @@ TBD - created by archiving change add-competition-ranking-report. Update Purpose
 - **WHEN** 某份已選取的試算表缺少服務日期或轉介門市欄位
 - **THEN** 系統 MUST 跳過該試算表，在 UI 上標示該試算表無法納入競賽，其他試算表的聚合不受影響
 
+## REMOVED Requirements
+
+### Requirement: 系統必須依轉介門市統計潛力客與非潛力客
+**Reason**: 競賽排行的分類語意已改為依 PTA 閾值區分聽損客與正常客（僅看聽力、不考慮成交），原先潛力客 / 非潛力客定義不再對應本次競賽欄位。
+**Migration**: 既有競賽排行顯示與測試需改為讀取 `hearingLossCustomers` / `normalCustomers`，不再使用 `potentialCustomers` / `nonPotentialCustomers`。
+
+### Requirement: 系統必須依競賽規則排序排行
+**Reason**: 排序依據已由潛力客數 / 非潛力客數改為總轉介人次。
+**Migration**: 排序邏輯、排行型別與畫面欄位需同步改為以 `totalReferrals` 為主，並保留 `hearingLossCustomers` / `normalCustomers` 作為明細欄位。

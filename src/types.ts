@@ -76,8 +76,26 @@ export interface CustomerAnalysis {
 export interface CompetitionRankingEntry {
   rank: number;
   storeName: string;
-  potentialCustomers: number;
-  nonPotentialCustomers: number;
+  totalReferrals: number;
+  hearingLossCustomers: number;
+  normalCustomers: number;
+}
+
+export interface CompetitionRankingSkippedSpreadsheet {
+  spreadsheetId: string;
+  spreadsheetTitle: string;
+  reason: string;
+}
+
+export interface CompetitionSheetSource {
+  spreadsheetId: string;
+  spreadsheetTitle: string;
+  sheetData: SheetData;
+}
+
+export interface CompetitionRankingAggregateResult {
+  entries: CompetitionRankingEntry[];
+  skippedSpreadsheets: CompetitionRankingSkippedSpreadsheet[];
 }
 
 export interface PeriodStats {

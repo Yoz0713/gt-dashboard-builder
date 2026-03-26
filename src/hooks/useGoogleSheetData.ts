@@ -1,9 +1,19 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
-import { UserProfile, SheetData, SheetInfo, DateRange, SpreadsheetListItem } from '../types';
+import {
+    UserProfile,
+    SheetData,
+    SheetInfo,
+    DateRange,
+    SpreadsheetListItem,
+    CompetitionRankingEntry,
+    CompetitionRankingSkippedSpreadsheet,
+} from '../types';
 import { fetchUserProfile, fetchSpreadsheetMetadata, fetchSheetData as apiFetchSheetData } from '../services/googleSheets';
-import { fetchSavedSpreadsheets, fetchSpreadsheetData } from '../services/sheetsApi';
-import { analyzeData, AnalysisResult } from '../utils/analysis';
+import { fetchSavedSpreadsheets, fetchSpreadsheetData, fetchMultipleSpreadsheets } from '../services/sheetsApi';
+import { aggregateCompetitionRankings, analyzeData, AnalysisResult } from '../utils/analysis';
+
+const COMPETITION_SELECTION_LIMIT = 10;
 
 export const useGoogleSheetData = () => {
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -17,6 +27,12 @@ export const useGoogleSheetData = () => {
     const [error, setError] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
     const [savedSpreadsheets, setSavedSpreadsheets] = useState<SpreadsheetListItem[]>([]);
+    const [selectedCompetitionSpreadsheetIds, setSelectedCompetitionSpreadsheetIds] = useState<string[]>([]);
+    const [competitionRankingEntries, setCompetitionRankingEntries] = useState<CompetitionRankingEntry[]>([]);
+    const [competitionSkippedSpreadsheets, setCompetitionSkippedSpreadsheets] = useState<CompetitionRankingSkippedSpreadsheet[]>([]);
+    const [competitionLoading, setCompetitionLoading] = useState<boolean>(false);
+    const [competitionError, setCompetitionError] = useState<string>('');
+    const [competitionSelectionMessage, setCompetitionSelectionMessage] = useState<string>('');
 
     // Google Login
     const login = useGoogleLogin({
@@ -53,6 +69,12 @@ export const useGoogleSheetData = () => {
         setSpreadsheetTitle('');
         setAnalysisResult(null);
         setSavedSpreadsheets([]);
+        setSelectedCompetitionSpreadsheetIds([]);
+        setCompetitionRankingEntries([]);
+        setCompetitionSkippedSpreadsheets([]);
+        setCompetitionLoading(false);
+        setCompetitionError('');
+        setCompetitionSelectionMessage('');
         setError('');
     }, []);
 
@@ -80,6 +102,7 @@ export const useGoogleSheetData = () => {
         try {
             setLoading(true);
             setError('');
+            setSpreadsheetId(id);
             const metadata = await fetchSpreadsheetMetadata(id, accessToken);
 
             if (!metadata.sheets || metadata.sheets.length === 0) {
@@ -144,12 +167,83 @@ export const useGoogleSheetData = () => {
         }
     }, [user, loadSavedSpreadsheets]);
 
+    useEffect(() => {
+        const savedSpreadsheetIds = new Set(savedSpreadsheets.map((sheet) => sheet.id));
+
+        setSelectedCompetitionSpreadsheetIds((previousIds) => {
+            const filteredIds = previousIds.filter((id) => savedSpreadsheetIds.has(id));
+
+            if (filteredIds.length > 0) {
+                return filteredIds;
+            }
+
+            if (spreadsheetId && savedSpreadsheetIds.has(spreadsheetId)) {
+                return [spreadsheetId];
+            }
+
+            return filteredIds;
+        });
+    }, [savedSpreadsheets, spreadsheetId]);
+
     const performAnalysis = useCallback((dateRange: DateRange, ptaThreshold: number) => {
         if (sheetData) {
             const result = analyzeData(sheetData, dateRange, ptaThreshold);
             setAnalysisResult(result);
         }
     }, [sheetData]);
+
+    const toggleCompetitionSpreadsheetSelection = useCallback((spreadsheetIdToToggle: string) => {
+        setCompetitionSelectionMessage('');
+
+        setSelectedCompetitionSpreadsheetIds((previousIds) => {
+            if (previousIds.includes(spreadsheetIdToToggle)) {
+                return previousIds.filter((id) => id !== spreadsheetIdToToggle);
+            }
+
+            if (previousIds.length >= COMPETITION_SELECTION_LIMIT) {
+                setCompetitionSelectionMessage(`競賽排行最多只能選擇 ${COMPETITION_SELECTION_LIMIT} 份試算表。`);
+                return previousIds;
+            }
+
+            return [...previousIds, spreadsheetIdToToggle];
+        });
+    }, []);
+
+    const loadCompetitionRanking = useCallback(async (dateRange: DateRange, ptaThreshold: number) => {
+        if (selectedCompetitionSpreadsheetIds.length === 0) {
+            setCompetitionRankingEntries([]);
+            setCompetitionSkippedSpreadsheets([]);
+            setCompetitionError('');
+            setCompetitionLoading(false);
+            return;
+        }
+
+        try {
+            setCompetitionLoading(true);
+            setCompetitionError('');
+
+            const selectedSpreadsheets = savedSpreadsheets.filter((sheet) =>
+                selectedCompetitionSpreadsheetIds.includes(sheet.id)
+            );
+
+            const sheets = await fetchMultipleSpreadsheets(selectedCompetitionSpreadsheetIds);
+            const competitionSources = sheets.map(({ spreadsheetId: id, sheetData: selectedSheetData }) => ({
+                spreadsheetId: id,
+                spreadsheetTitle: selectedSpreadsheets.find((sheet) => sheet.id === id)?.title || id,
+                sheetData: selectedSheetData,
+            }));
+
+            const result = aggregateCompetitionRankings(competitionSources, dateRange, ptaThreshold);
+            setCompetitionRankingEntries(result.entries);
+            setCompetitionSkippedSpreadsheets(result.skippedSpreadsheets);
+        } catch (err: any) {
+            setCompetitionError(err.message || 'Failed to load competition ranking');
+            setCompetitionRankingEntries([]);
+            setCompetitionSkippedSpreadsheets([]);
+        } finally {
+            setCompetitionLoading(false);
+        }
+    }, [savedSpreadsheets, selectedCompetitionSpreadsheetIds]);
 
     return {
         user,
@@ -163,6 +257,13 @@ export const useGoogleSheetData = () => {
         error,
         analysisResult,
         savedSpreadsheets,
+        selectedCompetitionSpreadsheetIds,
+        competitionRankingEntries,
+        competitionSkippedSpreadsheets,
+        competitionLoading,
+        competitionError,
+        competitionSelectionMessage,
+        competitionSelectionLimit: COMPETITION_SELECTION_LIMIT,
         setSpreadsheetId,
         setSelectedSheet,
         login,
@@ -171,6 +272,8 @@ export const useGoogleSheetData = () => {
         loadSheetData,
         loadSavedSpreadsheets,
         loadSavedSpreadsheet,
-        performAnalysis
+        performAnalysis,
+        toggleCompetitionSpreadsheetSelection,
+        loadCompetitionRanking,
     };
 };
