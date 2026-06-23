@@ -469,12 +469,15 @@ export const analyzeData = (
         const possibleDateCols = ['服務日期', '初次到店', '日期'];
         for (const col of possibleDateCols) {
             if (customer[col]) {
-                dateObj = new Date(customer[col]);
-                if (!isNaN(dateObj.getTime())) break;
+                const tempDate = new Date(customer[col]);
+                if (!isNaN(tempDate.getTime())) {
+                    dateObj = tempDate;
+                    break;
+                }
             }
         }
 
-        if (dateObj) {
+        if (dateObj && !isNaN(dateObj.getTime())) {
             const day = dateObj.getDay(); // 0 (Sun) - 6 (Sat)
             weekdayStats[day].visits++;
             if (isDealt) weekdayStats[day].deals++;
