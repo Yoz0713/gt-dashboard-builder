@@ -6,6 +6,7 @@ import { DashboardStats } from './components/DashboardStats';
 import { AnalysisCharts } from './components/AnalysisCharts';
 import { ComparisonView } from './components/ComparisonView';
 import { CompetitionRanking } from './components/CompetitionRanking';
+import { ClinicFollowUp } from './components/ClinicFollowUp';
 import { DateRange } from './types';
 
 const App: React.FC = () => {
@@ -45,7 +46,7 @@ const App: React.FC = () => {
     endMonth: 12,
   });
   const [ptaThreshold, setPtaThreshold] = useState(40);
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'competition'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'competition' | 'clinic'>('overview');
 
   // Effect handlers
   const handleSheetUrlSubmit = (e: React.FormEvent) => {
@@ -137,7 +138,7 @@ const App: React.FC = () => {
         />
 
         {error && (
-          <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-lg shadow-sm">
+          <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-lg shadow-sm print:hidden">
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -165,7 +166,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Tab Switcher */}
-              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex">
+              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-1">
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'overview'
@@ -193,6 +194,15 @@ const App: React.FC = () => {
                 >
                   <span>🏆</span> 競賽排行
                 </button>
+                <button
+                  onClick={() => setActiveTab('clinic')}
+                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'clinic'
+                    ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  <span>🏥</span> 診所資料回訪分析
+                </button>
               </div>
 
               <button
@@ -208,14 +218,18 @@ const App: React.FC = () => {
 
             {/* Content Views */}
             <div className="animate-fade-in">
-              {activeTab === 'overview' ? (
+              {activeTab === 'overview' && (
                 <>
                   <DashboardStats analysis={analysisResult.customerAnalysis} />
                   <AnalysisCharts analysisResult={analysisResult} />
                 </>
-              ) : activeTab === 'comparison' ? (
+              )}
+
+              {activeTab === 'comparison' && (
                 <ComparisonView analysis={analysisResult.customerAnalysis} />
-              ) : (
+              )}
+
+              {activeTab === 'competition' && (
                 <CompetitionRanking
                   entries={competitionRankingEntries}
                   loading={competitionLoading}
@@ -227,6 +241,15 @@ const App: React.FC = () => {
                   onToggleCompetitionSpreadsheet={toggleCompetitionSpreadsheetSelection}
                   competitionSelectionLimit={competitionSelectionLimit}
                   competitionSelectionMessage={competitionSelectionMessage}
+                />
+              )}
+
+              {activeTab === 'clinic' && (
+                <ClinicFollowUp
+                  reports={analysisResult.clinicFollowUpAnalysis}
+                  dateRange={dateRange}
+                  spreadsheetTitle={spreadsheetTitle}
+                  ptaThreshold={ptaThreshold}
                 />
               )}
             </div>

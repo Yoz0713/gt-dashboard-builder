@@ -16,8 +16,6 @@
 
 /* print helpers */
 @media print {
-  .no-print, .print\:hidden { display:none !important; }
-  .before-report { display:none !important; }
   
   @page {
     size: A4;
@@ -36,8 +34,12 @@
     page-break-inside: avoid !important;
   }
   
-  /* Ensure charts don't break across pages */
+  /* Ensure charts don't break across pages.
+     Chart.js 會把螢幕尺寸寫進 canvas 的 inline width/height，列印時容器變窄但 canvas 不會重算，
+     因此需要用 !important 蓋掉 inline 樣式，讓 canvas 依頁面寬度等比縮放，避免被頁面邊界裁切。 */
   canvas {
+      max-width: 100% !important;
+      height: auto !important;
       max-height: 300px !important;
   }
   
@@ -58,4 +60,32 @@
       break-before: page !important;
       margin-top: 2rem !important;
   }
+
+  /* 藍底白字的報告表頭在列印時必須保留背景色 */
+  .report-brand-header,
+  .clinic-report-table thead th {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+  }
+
+  /* 診所回訪報告的客戶明細表：允許跨頁，但每頁重複表頭且不切斷單一資料列。
+     上方 .bg-white 的 page-break-inside: avoid 會讓長明細表被壓在同一頁，這裡刻意覆寫。 */
+  .clinic-report-detail,
+  .clinic-report-table,
+  .clinic-report-table tbody {
+      page-break-inside: auto !important;
+  }
+  .clinic-report-table thead {
+      display: table-header-group;
+  }
+  .clinic-report-table tr {
+      page-break-inside: avoid !important;
+  }
+
+  /* 必須放在整個 print 區塊的最後。
+     這幾條與上面的 .grid-cols-1 / .print\:grid-cols-* 同權重且同為 !important，
+     由後者勝出，因此「隱藏」若寫在前面會被版面規則蓋掉而重新顯示出來。 */
+  .no-print,
+  .print\:hidden { display: none !important; }
+  .before-report { display: none !important; }
 } 

@@ -143,3 +143,174 @@ describe('analyzeData overview integration', () => {
         ]);
     });
 });
+
+describe('clinic follow-up analysis', () => {
+    const dateRange: DateRange = {
+        startYear: 2025,
+        startMonth: 1,
+        endYear: 2025,
+        endMonth: 12,
+    };
+
+    const clinicSheetData: SheetData = {
+        values: [
+            ['服務日期', '姓名', '年齡', '診所名稱', '左耳 PTA', '右耳 PTA', '狀態', '成交金額', '主聽力師'],
+            ['2025-01-05', '王大明', '70', '康健診所', '55', '30', '成交', 'NT$120,000', '林小美'],
+            ['2025-01-20', '陳小華', '45', '康健診所', '20', '25', '', '', '林小美'],
+            ['2025-02-10', '李阿姨', '80', '康健診所', '65', '70', '成交', '90000', '張聽力師'],
+            ['2025-03-01', '張先生', '60', '仁愛耳鼻喉科', '45', '10', '', '', '林小美'],
+            ['2025-03-02', '趙小姐', '50', '#N/A', '50', '50', '', '', '林小美'],
+            ['2025-03-03', '孫先生', '55', '', '30', '30', '', '', '林小美'],
+        ],
+    };
+
+    const getReports = (sheetData: SheetData = clinicSheetData, ptaThreshold = 40) =>
+        analyzeData(sheetData, dateRange, ptaThreshold)?.clinicFollowUpAnalysis ?? [];
+
+    it('groups referrals by clinic name and sorts by total referrals descending', () => {
+        const reports = getReports();
+
+        expect(reports.map((report) => report.clinic)).toEqual(['康健診所', '仁愛耳鼻喉科']);
+        expect(reports.map((report) => report.totalReferrals)).toEqual([3, 1]);
+    });
+
+    it('uses clinic name as the stable tie-breaker when total referrals match', () => {
+        const reports = getReports({
+            values: [
+                ['服務日期', '診所名稱', '左耳 PTA', '右耳 PTA'],
+                ['2025-01-01', 'Charlie', '50', '10'],
+                ['2025-01-02', 'Alpha', '50', '10'],
+                ['2025-01-03', 'Bravo', '50', '10'],
+            ],
+        });
+
+        expect(reports.map((report) => report.clinic)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('classifies hearing loss by PTA threshold and deals by the shared dealt check', () => {
+        const [kangJian] = getReports();
+
+        expect(kangJian.hearingLossCount).toBe(2);
+        expect(kangJian.normalCount).toBe(1);
+        expect(kangJian.dealtCount).toBe(2);
+        expect(kangJian.hearingLossRate).toBeCloseTo(66.67, 1);
+        expect(kangJian.conversionRate).toBeCloseTo(66.67, 1);
+        expect(kangJian.totalAmount).toBe(210000);
+        expect(kangJian.averageAmount).toBe(105000);
+    });
+
+    it('re-classifies hearing loss when the PTA threshold changes', () => {
+        const [kangJian] = getReports(clinicSheetData, 60);
+
+        expect(kangJian.hearingLossCount).toBe(1);
+        expect(kangJian.normalCount).toBe(2);
+    });
+
+    it('builds monthly buckets, first/last referral dates and the peak month', () => {
+        const [kangJian] = getReports();
+
+        expect(kangJian.monthly).toEqual([
+            { month: '2025-01', label: '2025年1月', referrals: 2, hearingLoss: 1, deals: 1 },
+            { month: '2025-02', label: '2025年2月', referrals: 1, hearingLoss: 1, deals: 1 },
+        ]);
+        expect(kangJian.firstReferralDate).toBe('2025-01-05');
+        expect(kangJian.lastReferralDate).toBe('2025-02-10');
+        expect(kangJian.activeMonths).toBe(2);
+        expect(kangJian.averagePerMonth).toBeCloseTo(1.5, 5);
+        expect(kangJian.peakMonthLabel).toBe('2025年1月');
+    });
+
+    it('lists patient records newest first with hearing degree and age distributions', () => {
+        const [kangJian] = getReports();
+
+        expect(kangJian.patients.map((patient) => patient.name)).toEqual(['李阿姨', '陳小華', '王大明']);
+        expect(kangJian.patients[0]).toMatchObject({
+            serviceDate: '2025-02-10',
+            age: 80,
+            leftPTA: 65,
+            rightPTA: 70,
+            worsePTA: 70,
+            hearingDegree: '中重度',
+            isHearingLoss: true,
+            isDealt: true,
+            amount: 90000,
+            audiologist: '張聽力師',
+        });
+        expect(kangJian.hearingDegreeDistribution).toEqual([
+            { degree: '正常', count: 1 },
+            { degree: '中度', count: 1 },
+            { degree: '中重度', count: 1 },
+        ]);
+        expect(kangJian.ageDistribution).toEqual([
+            { range: '45-64歲', count: 1 },
+            { range: '65-79歲', count: 1 },
+            { range: '80歲以上', count: 1 },
+        ]);
+        expect(kangJian.audiologistDistribution).toEqual([
+            { name: '林小美', count: 2 },
+            { name: '張聽力師', count: 1 },
+        ]);
+    });
+
+    it('excludes rows whose clinic name is empty or an invalid spreadsheet value', () => {
+        const reports = getReports();
+
+        expect(reports.map((report) => report.clinic)).not.toContain('#N/A');
+        expect(reports.map((report) => report.clinic)).not.toContain('');
+        expect(reports.reduce((sum, report) => sum + report.totalReferrals, 0)).toBe(4);
+    });
+
+    it('keeps rows with unparseable PTA in the total while not counting them as hearing loss', () => {
+        const reports = getReports({
+            values: [
+                ['服務日期', '診所名稱', '左耳 PTA', '右耳 PTA'],
+                ['2025-01-01', '康健診所', 'abc', 'xyz'],
+                ['2025-01-02', '康健診所', '', ''],
+                ['2025-01-03', '康健診所', '50', '10'],
+            ],
+        });
+
+        expect(reports[0].totalReferrals).toBe(3);
+        expect(reports[0].hearingLossCount).toBe(1);
+        expect(reports[0].normalCount).toBe(2);
+        expect(reports[0].hearingDegreeDistribution).toEqual([
+            { degree: '中度', count: 1 },
+            { degree: '未知', count: 2 },
+        ]);
+    });
+
+    it('locates the clinic column by fuzzy header match', () => {
+        const reports = getReports({
+            values: [
+                ['服務日期', '轉介診所', '左耳 PTA', '右耳 PTA'],
+                ['2025-01-01', '康健診所', '50', '10'],
+            ],
+        });
+
+        expect(reports.map((report) => report.clinic)).toEqual(['康健診所']);
+    });
+
+    it('returns an empty report list when the source sheet has no clinic column', () => {
+        const reports = getReports({
+            values: [
+                ['服務日期', '門市名稱', '左耳 PTA', '右耳 PTA'],
+                ['2025-01-01', 'Alpha', '50', '10'],
+            ],
+        });
+
+        expect(reports).toEqual([]);
+    });
+
+    it('leaves the existing clinic Top 8 and competition ranking outputs untouched', () => {
+        const result = analyzeData(clinicSheetData, dateRange, 40);
+
+        // 既有 clinicAnalysis 走精確 key 且不過濾 #N/A，刻意與新報表的行為分開，維持 Top 8 圖表原樣。
+        expect(result?.clinicAnalysis.map((clinic: { clinic: string }) => clinic.clinic)).toEqual([
+            '康健診所',
+            '仁愛耳鼻喉科',
+            '#N/A',
+        ]);
+        // 這份樣本沒有轉介門市欄位，競賽排行維持空陣列。
+        expect(result?.competitionRankingAnalysis).toEqual([]);
+    });
+});

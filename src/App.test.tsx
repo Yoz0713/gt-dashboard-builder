@@ -30,6 +30,10 @@ jest.mock('./components/CompetitionRanking', () => ({
     CompetitionRanking: () => <div>competition-ranking-view</div>,
 }));
 
+jest.mock('./components/ClinicFollowUp', () => ({
+    ClinicFollowUp: () => <div>clinic-follow-up-view</div>,
+}));
+
 const mockedUseGoogleSheetData = useGoogleSheetData as jest.MockedFunction<typeof useGoogleSheetData>;
 
 describe('App report tabs', () => {
@@ -65,6 +69,7 @@ describe('App report tabs', () => {
                 storeReferralAnalysis: [],
                 hearingScreeningAnalysis: [],
                 competitionRankingAnalysis: [],
+                clinicFollowUpAnalysis: [],
             },
             savedSpreadsheets: [],
             selectedCompetitionSpreadsheetIds: ['saved-1'],
@@ -88,7 +93,7 @@ describe('App report tabs', () => {
         });
     });
 
-    it('shows overview by default and allows switching to comparison and competition tabs', async () => {
+    it('shows overview by default and allows switching to comparison, competition and clinic tabs', async () => {
         const user = userEvent.setup();
         render(<App />);
 
@@ -103,8 +108,13 @@ describe('App report tabs', () => {
         expect(screen.getByText('competition-ranking-view')).toBeInTheDocument();
         expect(screen.queryByText('comparison-view')).not.toBeInTheDocument();
 
+        await user.click(screen.getByRole('button', { name: /診所資料回訪分析/i }));
+        expect(screen.getByText('clinic-follow-up-view')).toBeInTheDocument();
+        expect(screen.queryByText('competition-ranking-view')).not.toBeInTheDocument();
+
         await user.click(screen.getByRole('button', { name: /總覽分析/i }));
         expect(screen.getByText('dashboard-stats')).toBeInTheDocument();
         expect(screen.getByText('analysis-charts')).toBeInTheDocument();
+        expect(screen.queryByText('clinic-follow-up-view')).not.toBeInTheDocument();
     });
 });

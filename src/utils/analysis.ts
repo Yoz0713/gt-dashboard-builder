@@ -7,6 +7,9 @@ import {
     CompetitionRankingAggregateResult,
     CompetitionRankingSkippedSpreadsheet,
     CompetitionSheetSource,
+    ClinicFollowUpReport,
+    ClinicMonthlyPoint,
+    ClinicPatientRecord,
 } from '../types';
 import { parseAmount, getEarPTA, getHearingLossDegree, parseAge } from './parsers';
 
@@ -17,6 +20,7 @@ export interface AnalysisResult {
     storeReferralAnalysis: any;
     hearingScreeningAnalysis: any;
     competitionRankingAnalysis: CompetitionRankingEntry[];
+    clinicFollowUpAnalysis: ClinicFollowUpReport[];
 }
 
 const INVALID_STORE_NAMES = new Set(['', '#N/A', 'N/A', '#REF!']);
@@ -671,6 +675,16 @@ export const analyzeData = (
     // 轉陣列並排序 (依總轉介數)
     const clinicArray = Object.values(clinicSummary).sort((a, b) => b.total - a.total);
 
+    /* ====================== 診所資料回訪分析 ====================== */
+    // 與上方 clinicSummary 各自獨立：Top 8 圖表沿用 clinicSummary，回訪報告用逐筆明細。
+    const clinicFollowUpAnalysis = buildClinicFollowUpReports(
+        customersArray,
+        headers,
+        dateColumnIndex,
+        ptaThreshold,
+        checkIsDealt
+    );
+
     /* ====================== 門市轉介分析 ====================== */
     const storeSummary: { [key: string]: { store: string; total: number; potential: number; dealt: number; totalAmount: number; conversionRate: number; } } = {};
 
@@ -961,5 +975,286 @@ export const analyzeData = (
         storeReferralAnalysis: storeArray,
         hearingScreeningAnalysis: hearingArray,
         competitionRankingAnalysis,
+        clinicFollowUpAnalysis,
     };
+};
+
+/* ====================== 診所資料回訪分析 ====================== */
+
+const CLINIC_NAME_PATTERNS = ['診所名稱', '轉介診所', '診所', '醫院'];
+
+const AGE_GROUP_ORDER = ['0-18歲', '19-44歲', '45-64歲', '65-79歲', '80歲以上', '未填寫'];
+
+const HEARING_DEGREE_ORDER = ['正常', '輕度', '中度', '中重度', '重度', '極重度', '未知'];
+
+const FOLLOW_UP_ALERT_DAYS = 60;
+
+/**
+ * 以優先序模糊比對定位診所名稱欄位。
+ * 與 findStoreNameHeader 的差別：找不到時回傳空字串，不做欄位位置 fallback。
+ * 診所欄位不存在時應誠實顯示空狀態，而不是拿不相干的欄位硬湊出報告。
+ */
+const findClinicNameHeader = (headers: string[]) => {
+    for (const pattern of CLINIC_NAME_PATTERNS) {
+        const matchedHeader = headers.find((header) => normalizeHeader(header).includes(pattern.toLowerCase()));
+        if (matchedHeader) {
+            return matchedHeader;
+        }
+    }
+
+    return '';
+};
+
+const getAgeGroup = (age: number) => {
+    if (isNaN(age)) return '未填寫';
+    if (age <= 18) return '0-18歲';
+    if (age <= 44) return '19-44歲';
+    if (age <= 64) return '45-64歲';
+    if (age <= 79) return '65-79歲';
+    return '80歲以上';
+};
+
+const formatIsoDate = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const findCustomerValueByKeyword = (
+    customer: { [key: string]: string },
+    matcher: (normalizedKey: string) => boolean
+) => {
+    const key = Object.keys(customer).find((k) => matcher(normalizeHeader(k)));
+    return key ? (customer[key] || '').trim() : '';
+};
+
+interface ClinicFollowUpAccumulator {
+    clinic: string;
+    patients: ClinicPatientRecord[];
+    monthlyMap: { [monthKey: string]: ClinicMonthlyPoint };
+    hearingDegreeCounts: { [degree: string]: number };
+    ageCounts: { [range: string]: number };
+    audiologistCounts: { [name: string]: number };
+    hearingLossCount: number;
+    dealtCount: number;
+    totalAmount: number;
+    firstDate: Date | null;
+    lastDate: Date | null;
+}
+
+/**
+ * 依「診所名稱」彙總單一試算表的回訪報告資料。
+ * customers 已由 analyzeData 依日期區間篩選並轉成 header -> value 的物件陣列。
+ */
+export const buildClinicFollowUpReports = (
+    customers: { [key: string]: string }[],
+    headers: string[],
+    dateColumnIndex: number,
+    ptaThreshold: number,
+    isDealt: (customer: { [key: string]: string }) => boolean
+): ClinicFollowUpReport[] => {
+    const clinicNameHeader = findClinicNameHeader(headers);
+    if (!clinicNameHeader) {
+        return [];
+    }
+
+    const dateHeader = dateColumnIndex >= 0 ? headers[dateColumnIndex] : '';
+    const clinicMap: { [clinic: string]: ClinicFollowUpAccumulator } = {};
+
+    customers.forEach((customer) => {
+        const clinicName = (customer[clinicNameHeader] || '').trim();
+        if (INVALID_STORE_NAMES.has(clinicName)) return;
+
+        if (!clinicMap[clinicName]) {
+            clinicMap[clinicName] = {
+                clinic: clinicName,
+                patients: [],
+                monthlyMap: {},
+                hearingDegreeCounts: {},
+                ageCounts: {},
+                audiologistCounts: {},
+                hearingLossCount: 0,
+                dealtCount: 0,
+                totalAmount: 0,
+                firstDate: null,
+                lastDate: null,
+            };
+        }
+
+        const clinic = clinicMap[clinicName];
+
+        const rawDate = dateHeader ? (customer[dateHeader] || '').trim() : '';
+        const date = parseSheetDate(rawDate);
+
+        const rawLeftPTA = getEarPTA(customer, '左');
+        const rawRightPTA = getEarPTA(customer, '右');
+        const leftPTA = isNaN(rawLeftPTA) ? null : rawLeftPTA;
+        const rightPTA = isNaN(rawRightPTA) ? null : rawRightPTA;
+        const worsePTA = leftPTA === null && rightPTA === null
+            ? null
+            : Math.max(leftPTA === null ? -Infinity : leftPTA, rightPTA === null ? -Infinity : rightPTA);
+
+        // 與競賽排行一致：PTA 無法解析時比較結果為 false，該筆不計為聽損個案。
+        const isHearingLoss = rawLeftPTA > ptaThreshold || rawRightPTA > ptaThreshold;
+        const hearingDegree = worsePTA === null ? '未知' : getHearingLossDegree(worsePTA);
+
+        const dealt = isDealt(customer);
+        const rawAmount = customer['成交金額'] || customer['金額'] || customer['價格'] || customer['營業額'] || '';
+        const parsedAmount = parseAmount(rawAmount);
+        const amount = dealt && !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
+
+        const name = findCustomerValueByKeyword(
+            customer,
+            (key) => key.includes('姓名') || key.includes('name')
+        ) || '未命名';
+
+        const audiologist = (customer['主聽力師'] || customer['聽力師'] || '').trim() || '未知';
+
+        const rawAge = parseAge(
+            customer['年齡'] || customer['Age'],
+            customer['顧客生日 (西元/月/日)'] || customer['生日'] || customer['出生日期'] || customer['BirthDate']
+        );
+
+        clinic.patients.push({
+            serviceDate: rawDate,
+            sortKey: date ? date.getTime() : 0,
+            name,
+            age: isNaN(rawAge) ? null : rawAge,
+            leftPTA,
+            rightPTA,
+            worsePTA,
+            hearingDegree,
+            isHearingLoss,
+            isDealt: dealt,
+            amount,
+            audiologist,
+        });
+
+        if (isHearingLoss) clinic.hearingLossCount++;
+        if (dealt) clinic.dealtCount++;
+        clinic.totalAmount += amount;
+
+        clinic.hearingDegreeCounts[hearingDegree] = (clinic.hearingDegreeCounts[hearingDegree] || 0) + 1;
+
+        const ageGroup = getAgeGroup(rawAge);
+        clinic.ageCounts[ageGroup] = (clinic.ageCounts[ageGroup] || 0) + 1;
+
+        clinic.audiologistCounts[audiologist] = (clinic.audiologistCounts[audiologist] || 0) + 1;
+
+        if (date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+
+            if (!clinic.monthlyMap[monthKey]) {
+                clinic.monthlyMap[monthKey] = {
+                    month: monthKey,
+                    label: `${year}年${month}月`,
+                    referrals: 0,
+                    hearingLoss: 0,
+                    deals: 0,
+                };
+            }
+
+            clinic.monthlyMap[monthKey].referrals++;
+            if (isHearingLoss) clinic.monthlyMap[monthKey].hearingLoss++;
+            if (dealt) clinic.monthlyMap[monthKey].deals++;
+
+            if (!clinic.firstDate || date < clinic.firstDate) clinic.firstDate = date;
+            if (!clinic.lastDate || date > clinic.lastDate) clinic.lastDate = date;
+        }
+    });
+
+    return Object.values(clinicMap)
+        .map((clinic): ClinicFollowUpReport => {
+            const totalReferrals = clinic.patients.length;
+            const monthly = Object.values(clinic.monthlyMap).sort((a, b) => a.month.localeCompare(b.month));
+            const peakMonth = monthly.reduce<ClinicMonthlyPoint | null>(
+                (peak, point) => (!peak || point.referrals > peak.referrals ? point : peak),
+                null
+            );
+
+            return {
+                clinic: clinic.clinic,
+                totalReferrals,
+                hearingLossCount: clinic.hearingLossCount,
+                normalCount: totalReferrals - clinic.hearingLossCount,
+                dealtCount: clinic.dealtCount,
+                conversionRate: totalReferrals > 0 ? (clinic.dealtCount / totalReferrals) * 100 : 0,
+                hearingLossRate: totalReferrals > 0 ? (clinic.hearingLossCount / totalReferrals) * 100 : 0,
+                totalAmount: clinic.totalAmount,
+                averageAmount: clinic.dealtCount > 0 ? Math.round(clinic.totalAmount / clinic.dealtCount) : 0,
+                firstReferralDate: clinic.firstDate ? formatIsoDate(clinic.firstDate) : '',
+                lastReferralDate: clinic.lastDate ? formatIsoDate(clinic.lastDate) : '',
+                activeMonths: monthly.length,
+                averagePerMonth: monthly.length > 0 ? totalReferrals / monthly.length : 0,
+                peakMonthLabel: peakMonth ? peakMonth.label : '',
+                monthly,
+                hearingDegreeDistribution: HEARING_DEGREE_ORDER
+                    .filter((degree) => clinic.hearingDegreeCounts[degree] > 0)
+                    .map((degree) => ({ degree, count: clinic.hearingDegreeCounts[degree] })),
+                ageDistribution: AGE_GROUP_ORDER
+                    .filter((range) => clinic.ageCounts[range] > 0)
+                    .map((range) => ({ range, count: clinic.ageCounts[range] })),
+                audiologistDistribution: Object.entries(clinic.audiologistCounts)
+                    .map(([name, count]) => ({ name, count }))
+                    .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.name.localeCompare(b.name))),
+                patients: clinic.patients.sort((a, b) => b.sortKey - a.sortKey),
+            };
+        })
+        .sort((a, b) => {
+            if (b.totalReferrals !== a.totalReferrals) {
+                return b.totalReferrals - a.totalReferrals;
+            }
+
+            return a.clinic.localeCompare(b.clinic);
+        });
+};
+
+/**
+ * 依回訪報告產生面談時可直接使用的重點敘述。
+ */
+export const buildClinicTalkingPoints = (
+    report: ClinicFollowUpReport,
+    ptaThreshold: number,
+    daysSinceLastReferral: number | null
+): string[] => {
+    const points: string[] = [];
+
+    points.push(
+        `本期共轉介 ${report.totalReferrals} 位個案，其中 ${report.hearingLossCount} 位（${report.hearingLossRate.toFixed(0)}%）雙耳任一 PTA 高於 ${ptaThreshold} dB，屬需要進一步處理的聽損個案。`
+    );
+
+    points.push(
+        report.dealtCount > 0
+            ? `已完成配戴 ${report.dealtCount} 位，配戴率 ${report.conversionRate.toFixed(0)}%。`
+            : '本期尚未有個案完成配戴，建議一併討論轉介後的追蹤流程。'
+    );
+
+    if (report.peakMonthLabel) {
+        points.push(
+            `轉介高峰為 ${report.peakMonthLabel}；本期橫跨 ${report.activeMonths} 個月，平均每月 ${report.averagePerMonth.toFixed(1)} 位。`
+        );
+    }
+
+    const topDegree = report.hearingDegreeDistribution
+        .filter((item) => item.degree !== '正常' && item.degree !== '未知')
+        .reduce<{ degree: string; count: number } | null>(
+            (top, item) => (!top || item.count > top.count ? item : top),
+            null
+        );
+    if (topDegree) {
+        points.push(`聽損程度以「${topDegree.degree}」最多（${topDegree.count} 位），可作為衛教重點。`);
+    }
+
+    if (report.lastReferralDate) {
+        if (daysSinceLastReferral !== null && daysSinceLastReferral > FOLLOW_UP_ALERT_DAYS) {
+            points.push(
+                `⚠️ 最近一次轉介為 ${report.lastReferralDate}，距今已 ${daysSinceLastReferral} 天未有新轉介，建議本次回訪重點釐清原因。`
+            );
+        } else if (daysSinceLastReferral !== null) {
+            points.push(`最近一次轉介為 ${report.lastReferralDate}（距今 ${daysSinceLastReferral} 天），合作維持中。`);
+        } else {
+            points.push(`最近一次轉介為 ${report.lastReferralDate}。`);
+        }
+    }
+
+    return points;
 };

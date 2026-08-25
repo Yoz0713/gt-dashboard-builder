@@ -117,3 +117,48 @@ export interface DateRange {
   endYear: number;
   endMonth: number;
 } 
+
+export interface ClinicPatientRecord {
+  serviceDate: string;
+  sortKey: number;
+  name: string;
+  age: number | null;
+  leftPTA: number | null;
+  rightPTA: number | null;
+  worsePTA: number | null;
+  hearingDegree: string;
+  isHearingLoss: boolean;
+  isDealt: boolean;
+  amount: number;
+  audiologist: string;
+}
+
+export interface ClinicMonthlyPoint {
+  month: string;
+  label: string;
+  referrals: number;
+  hearingLoss: number;
+  deals: number;
+}
+
+export interface ClinicFollowUpReport {
+  clinic: string;
+  totalReferrals: number;
+  hearingLossCount: number;
+  normalCount: number;
+  dealtCount: number;
+  conversionRate: number;
+  hearingLossRate: number;
+  totalAmount: number;
+  averageAmount: number;
+  firstReferralDate: string;
+  lastReferralDate: string;
+  activeMonths: number;
+  averagePerMonth: number;
+  peakMonthLabel: string;
+  monthly: ClinicMonthlyPoint[];
+  hearingDegreeDistribution: { degree: string; count: number }[];
+  ageDistribution: { range: string; count: number }[];
+  audiologistDistribution: { name: string; count: number }[];
+  patients: ClinicPatientRecord[];
+}
