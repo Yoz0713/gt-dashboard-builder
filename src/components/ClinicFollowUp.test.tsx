@@ -1,11 +1,12 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
     ClinicFollowUp,
     calculateReferralFee,
     daysSinceDate,
     formatStoreName,
+    maskBirthDate,
     maskCustomerName,
 } from './ClinicFollowUp';
 import { ClinicFollowUpReport, ClinicPatientRecord, DateRange } from '../types';
@@ -30,6 +31,7 @@ const createPatient = (overrides: Partial<ClinicPatientRecord> = {}): ClinicPati
     serviceDate: '2025-03-01',
     sortKey: new Date(2025, 2, 1).getTime(),
     name: '王大明',
+    birthDate: '1950/03/12',
     age: 70,
     leftPTA: 55,
     rightPTA: 30,
@@ -296,6 +298,93 @@ describe('ClinicFollowUp print output', () => {
 
         expect(screen.getByTestId('referral-fee-block')).toHaveClass('print:hidden');
     });
+
+    it('hides the footer disclaimer from the exported print report', () => {
+        renderComponent([createReport()]);
+
+        const disclaimer = screen.getByText(/本報告依.*實際金額以雙方合約約定為準/);
+        expect(disclaimer).toHaveClass('print:hidden');
+    });
+
+    it('omits age and whether fitted columns from the detail table and prevents name from wrapping', () => {
+        renderComponent([
+            createReport({
+                patients: [
+                    createPatient({ name: '諸葛孔明先生', age: 75, isDealt: true }),
+                ],
+            }),
+        ]);
+
+        const detailTitle = screen.getByText('轉介客戶明細');
+        const detailContainer = detailTitle.closest('.clinic-report-detail');
+        expect(detailContainer).not.toBeNull();
+        expect(screen.queryByText(/依服務日期由近至遠排列/)).not.toBeInTheDocument();
+
+        const detailTable = detailContainer!.querySelector('table')!;
+        const headers = Array.from(detailTable.querySelectorAll('th')).map((th) => th.textContent);
+        expect(headers).not.toContain('年齡');
+        expect(headers).not.toContain('是否配戴');
+
+        expect(headers).toEqual([
+            '服務日期',
+            '姓名',
+            '生日',
+            '左耳 PTA',
+            '右耳 PTA',
+            '聽損程度',
+            '成交金額',
+            '轉介費用',
+            '主聽力師',
+        ]);
+
+        const nameCell = within(detailTable).getByText('諸葛孔明先生');
+        expect(nameCell).toHaveClass('whitespace-nowrap');
+    });
+
+    it('shows the customer birth date in the detail table without wrapping', () => {
+        renderComponent([
+            createReport({
+                patients: [
+                    createPatient({ name: '王大明', birthDate: '1950/03/12' }),
+                    createPatient({ name: '陳小華', birthDate: '', isDealt: false, amount: 0 }),
+                ],
+            }),
+        ]);
+
+        const detailTable = screen.getByText('轉介客戶明細').closest('.clinic-report-detail')!.querySelector('table')!;
+
+        const birthCell = within(detailTable).getByText('1950/03/12');
+        expect(birthCell).toHaveClass('whitespace-nowrap');
+        // 沒有生日資料的列以破折號佔位，不留空白
+        expect(within(detailTable).getAllByText('—').length).toBeGreaterThan(0);
+    });
+
+    it('marks the service date and name columns so printing can centre every other column', () => {
+        renderComponent([
+            createReport({
+                patients: [createPatient({ name: '王大明', birthDate: '1950/03/12' })],
+            }),
+        ]);
+
+        const detailTable = screen.getByText('轉介客戶明細').closest('.clinic-report-detail')!.querySelector('table')!;
+
+        const marked = Array.from(detailTable.querySelectorAll('.clinic-report-left')).map((cell) => cell.textContent);
+        expect(marked).toEqual(['服務日期', '姓名', '2025-03-01', '王大明']);
+    });
+
+    it('masks the birth date down to the year when name masking is on', async () => {
+        const user = userEvent.setup();
+        renderComponent([
+            createReport({
+                patients: [createPatient({ name: '王大明', birthDate: '1950/03/12' })],
+            }),
+        ]);
+
+        await user.click(screen.getByLabelText('姓名遮罩'));
+
+        expect(screen.queryByText('1950/03/12')).not.toBeInTheDocument();
+        expect(screen.getByText('1950/○○/○○')).toBeInTheDocument();
+    });
 });
 
 describe('formatStoreName', () => {
@@ -328,6 +417,20 @@ describe('maskCustomerName', () => {
     it('leaves single-character and empty names untouched', () => {
         expect(maskCustomerName('陳')).toBe('陳');
         expect(maskCustomerName('')).toBe('');
+    });
+});
+
+describe('maskBirthDate', () => {
+    it('keeps the year and masks the month and day', () => {
+        expect(maskBirthDate('1950/03/12')).toBe('1950/○○/○○');
+    });
+
+    it('masks values that carry no recognisable year', () => {
+        expect(maskBirthDate('民國39年')).toBe('○○○');
+    });
+
+    it('leaves empty birth dates untouched', () => {
+        expect(maskBirthDate('')).toBe('');
     });
 });
 

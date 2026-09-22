@@ -53,6 +53,31 @@ describe('print stylesheet cascade', () => {
         expect(hideRule).toMatch(/display:\s*none\s*!important/);
     });
 
+    it('forces the clinic detail table cells to stay on one line', () => {
+        const nowrapRule = printBlock.indexOf('.clinic-report-table th,');
+        expect(nowrapRule).toBeGreaterThan(-1);
+
+        const rule = printBlock.slice(nowrapRule, printBlock.indexOf('}', nowrapRule));
+        expect(rule).toMatch(/white-space:\s*nowrap\s*!important/);
+        // 隱藏規則永遠在最後；版面規則必須排在它前面才不會被順序影響
+        expect(nowrapRule).toBeLessThan(printBlock.indexOf('display: none'));
+    });
+
+    it('centres every detail column except the service date and name columns', () => {
+        const centreRule = printBlock.indexOf('.clinic-report-detail .clinic-report-table th,');
+        expect(centreRule).toBeGreaterThan(-1);
+        expect(printBlock.slice(centreRule, printBlock.indexOf('}', centreRule))).toMatch(
+            /text-align:\s*center\s*!important/
+        );
+
+        // 服務日期與姓名的例外規則
+        const nameRule = printBlock.indexOf('.clinic-report-detail .clinic-report-table .clinic-report-left');
+        expect(nameRule).toBeGreaterThan(centreRule);
+        expect(printBlock.slice(nameRule, printBlock.indexOf('}', nameRule))).toMatch(
+            /text-align:\s*left\s*!important/
+        );
+    });
+
     it('preserves background colours so the blue report headers survive printing', () => {
         expect(printBlock).toContain('.report-brand-header');
         expect(printBlock).toMatch(/print-color-adjust:\s*exact\s*!important/);

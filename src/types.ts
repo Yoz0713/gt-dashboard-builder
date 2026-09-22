@@ -122,6 +122,7 @@ export interface ClinicPatientRecord {
   serviceDate: string;
   sortKey: number;
   name: string;
+  birthDate: string;
   age: number | null;
   leftPTA: number | null;
   rightPTA: number | null;

@@ -154,13 +154,13 @@ describe('clinic follow-up analysis', () => {
 
     const clinicSheetData: SheetData = {
         values: [
-            ['服務日期', '姓名', '年齡', '診所名稱', '左耳 PTA', '右耳 PTA', '狀態', '成交金額', '主聽力師'],
-            ['2025-01-05', '王大明', '70', '康健診所', '55', '30', '成交', 'NT$120,000', '林小美'],
-            ['2025-01-20', '陳小華', '45', '康健診所', '20', '25', '', '', '林小美'],
-            ['2025-02-10', '李阿姨', '80', '康健診所', '65', '70', '成交', '90000', '張聽力師'],
-            ['2025-03-01', '張先生', '60', '仁愛耳鼻喉科', '45', '10', '', '', '林小美'],
-            ['2025-03-02', '趙小姐', '50', '#N/A', '50', '50', '', '', '林小美'],
-            ['2025-03-03', '孫先生', '55', '', '30', '30', '', '', '林小美'],
+            ['服務日期', '姓名', '年齡', '顧客生日 (西元/月/日)', '診所名稱', '左耳 PTA', '右耳 PTA', '狀態', '成交金額', '主聽力師'],
+            ['2025-01-05', '王大明', '70', '1950-3-12', '康健診所', '55', '30', '成交', 'NT$120,000', '林小美'],
+            ['2025-01-20', '陳小華', '45', '', '康健診所', '20', '25', '', '', '林小美'],
+            ['2025-02-10', '李阿姨', '80', '1943年11月5日', '康健診所', '65', '70', '成交', '90000', '張聽力師'],
+            ['2025-03-01', '張先生', '60', '民國39年', '仁愛耳鼻喉科', '45', '10', '', '', '林小美'],
+            ['2025-03-02', '趙小姐', '50', '1975/06/01', '#N/A', '50', '50', '', '', '林小美'],
+            ['2025-03-03', '孫先生', '55', '1970/01/01', '', '30', '30', '', '', '林小美'],
         ],
     };
 
@@ -250,6 +250,35 @@ describe('clinic follow-up analysis', () => {
             { name: '林小美', count: 2 },
             { name: '張聽力師', count: 1 },
         ]);
+    });
+
+    it('normalises the customer birth date to YYYY/MM/DD and keeps unparseable values as-is', () => {
+        const [kangJian, renAi] = getReports();
+
+        // 李阿姨 -> 陳小華 -> 王大明（日期由近至遠）
+        expect(kangJian.patients.map((patient) => patient.birthDate)).toEqual([
+            '1943/11/05',
+            '',
+            '1950/03/12',
+        ]);
+        expect(renAi.patients[0].birthDate).toBe('民國39年');
+    });
+
+    it('derives age from the birth date column when the sheet has no age column', () => {
+        const reports = getReports({
+            values: [
+                ['服務日期', '姓名', '生日', '診所名稱', '左耳 PTA', '右耳 PTA'],
+                ['2025-01-05', '王大明', '1950/03/12', '康健診所', '55', '30'],
+            ],
+        });
+
+        const expectedAge = new Date().getFullYear() - 1950 - (new Date() < new Date(new Date().getFullYear(), 2, 12) ? 1 : 0);
+
+        expect(reports[0].patients[0].birthDate).toBe('1950/03/12');
+        expect(reports[0].patients[0].age).toBe(expectedAge);
+        // 有生日就不該落到「未填寫」分組
+        expect(reports[0].ageDistribution).toHaveLength(1);
+        expect(reports[0].ageDistribution[0].range).not.toBe('未填寫');
     });
 
     it('excludes rows whose clinic name is empty or an invalid spreadsheet value', () => {

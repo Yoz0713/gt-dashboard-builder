@@ -1017,6 +1017,20 @@ const getAgeGroup = (age: number) => {
 const formatIsoDate = (date: Date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
+/**
+ * 生日在明細表中要能一眼核對，因此統一正規化為 YYYY/MM/DD。
+ * 來源寫法五花八門（1950-3-12、1950年3月12日…），無法解析時保留原字串，不硬猜。
+ */
+const formatBirthDate = (value: string): string => {
+    const raw = (value || '').trim();
+    if (!raw) return '';
+
+    const date = parseSheetDate(raw);
+    if (!date) return raw;
+
+    return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+};
+
 const findCustomerValueByKeyword = (
     customer: { [key: string]: string },
     matcher: (normalizedKey: string) => boolean
@@ -1107,15 +1121,19 @@ export const buildClinicFollowUpReports = (
 
         const audiologist = (customer['主聽力師'] || customer['聽力師'] || '').trim() || '未知';
 
-        const rawAge = parseAge(
-            customer['年齡'] || customer['Age'],
-            customer['顧客生日 (西元/月/日)'] || customer['生日'] || customer['出生日期'] || customer['BirthDate']
+        // 生日欄名各店寫法不一（顧客生日 (西元/月/日) / 生日 / 出生日期 / BirthDate），以關鍵字模糊比對。
+        const rawBirthDate = findCustomerValueByKeyword(
+            customer,
+            (key) => key.includes('生日') || key.includes('出生') || key.includes('birth')
         );
+
+        const rawAge = parseAge(customer['年齡'] || customer['Age'], rawBirthDate);
 
         clinic.patients.push({
             serviceDate: rawDate,
             sortKey: date ? date.getTime() : 0,
             name,
+            birthDate: formatBirthDate(rawBirthDate),
             age: isNaN(rawAge) ? null : rawAge,
             leftPTA,
             rightPTA,

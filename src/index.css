@@ -82,6 +82,32 @@
       page-break-inside: avoid !important;
   }
 
+  /* 明細表欄位變多後 A4 寬度容易不夠：列印時縮小字級與內距，
+     並強制所有儲存格不折行，避免單一欄位被拆成兩行。 */
+  .clinic-report-table {
+      width: 100% !important;
+      font-size: 10px !important;
+  }
+  .clinic-report-table th,
+  .clinic-report-table td {
+      white-space: nowrap !important;
+      padding: 4px 6px !important;
+  }
+  /* 螢幕上用來水平捲動的容器，列印時會把超出的欄位裁掉。 */
+  .clinic-report-detail .overflow-x-auto {
+      overflow: visible !important;
+  }
+
+  /* 列印的客戶明細表：除服務日期與姓名維持靠左外，其餘欄位一律置中，欄距看起來才整齊。
+     螢幕上仍維持金額靠右、文字靠左的原樣式。 */
+  .clinic-report-detail .clinic-report-table th,
+  .clinic-report-detail .clinic-report-table td {
+      text-align: center !important;
+  }
+  .clinic-report-detail .clinic-report-table .clinic-report-left {
+      text-align: left !important;
+  }
+
   /* 必須放在整個 print 區塊的最後。
      這幾條與上面的 .grid-cols-1 / .print\:grid-cols-* 同權重且同為 !important，
      由後者勝出，因此「隱藏」若寫在前面會被版面規則蓋掉而重新顯示出來。 */

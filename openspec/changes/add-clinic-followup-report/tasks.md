@@ -66,3 +66,15 @@
 - [x] 8.2 新增 `src/printStyles.test.ts`，直接解析 `src/index.css` 鎖住「隱藏必須勝過版面」的順序不變式（jsdom 不套用樣式表，元件測試抓不到這類問題）
 - [x] 8.3 以還原舊順序的方式驗證新測試確實會失敗
 - [ ] 8.4 以瀏覽器列印預覽確認轉介費用的四張統計卡確實不再出現
+
+## 9. 客戶生日欄位與列印不折行
+
+- [x] 9.1 `src/types.ts` 的 `ClinicPatientRecord` 新增 `birthDate`
+- [x] 9.2 `buildClinicFollowUpReports` 以 `findCustomerValueByKeyword` 模糊比對生日欄位（生日 / 出生 / birth），取代寫死的欄名串接，並把同一值餵給 `parseAge`
+- [x] 9.3 新增 `formatBirthDate()`，重用 `parseSheetDate` 將生日正規化為 `YYYY/MM/DD`，無法解析時保留原字串
+- [x] 9.4 客戶明細表在「姓名」之後新增「生日」欄，無資料以破折號佔位
+- [x] 9.5 新增 `maskBirthDate()`，姓名遮罩開啟時生日只保留年份（`1950/○○/○○`）
+- [x] 9.6 `index.css` 列印樣式新增明細表縮小字級 / 內距與 `white-space: nowrap`，並讓水平捲動容器在列印時 `overflow: visible`
+- [x] 9.7 補上測試：生日正規化與無法解析值、無年齡欄時以生日推算年齡、明細表生日欄與不折行、生日遮罩、列印樣式 nowrap 不變式
+- [x] 9.8 明細表的服務日期與姓名欄加上 `clinic-report-left`，列印樣式讓其餘欄位置中（螢幕對齊不變），並補上對應測試
+- [ ] 9.9 以瀏覽器列印預覽確認明細表 9 欄完整落在 A4 頁寬內、無任何欄位折行，且除服務日期與姓名外皆置中

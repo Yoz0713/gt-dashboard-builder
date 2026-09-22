@@ -119,6 +119,14 @@ export const maskCustomerName = (name: string): string => {
     return `${name[0]}${'○'.repeat(name.length - 2)}${name[name.length - 1]}`;
 };
 
+/** 1950/03/12 -> 1950/○○/○○；遮罩時保留年份，仍可辨識年齡層。 */
+export const maskBirthDate = (birthDate: string): string => {
+    if (!birthDate) return '';
+
+    const year = birthDate.match(/\d{4}/);
+    return year ? `${year[0]}/○○/○○` : '○○○';
+};
+
 /**
  * 試算表名稱通常是「門市 + 工作表名」（例：湖口店來客紀錄），
  * 報告表頭只要門市本身，因此把固定的工作表名與前後分隔符去掉。
@@ -522,10 +530,10 @@ export const ClinicFollowUp: React.FC<ClinicFollowUpProps> = ({
                             <table className="clinic-report-table min-w-full divide-y divide-slate-100">
                                 <thead style={{ backgroundColor: BRAND_BLUE }}>
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">服務日期</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">姓名</th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">成交金額</th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">服務日期</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">姓名</th>
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">成交金額</th>
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">
                                             轉介費用 ({referralFeeRate}%)
                                         </th>
                                     </tr>
@@ -534,7 +542,7 @@ export const ClinicFollowUp: React.FC<ClinicFollowUpProps> = ({
                                     {dealtPatients.map((patient, index) => (
                                         <tr key={`fee-${patient.serviceDate}-${patient.name}-${index}`} className="hover:bg-slate-50 transition-colors">
                                             <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{patient.serviceDate || '—'}</td>
-                                            <td className="px-4 py-3 text-slate-800 font-medium">
+                                            <td className="px-4 py-3 text-slate-800 font-medium whitespace-nowrap">
                                                 {maskNames ? maskCustomerName(patient.name) : patient.name}
                                             </td>
                                             <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(patient.amount)}</td>
@@ -596,9 +604,6 @@ export const ClinicFollowUp: React.FC<ClinicFollowUpProps> = ({
                 <div className="p-6 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h3 className="text-lg font-bold text-slate-800 border-l-4 border-slate-500 pl-3">轉介客戶明細</h3>
-                        <p className="mt-2 text-sm text-slate-500">
-                            共 {selectedReport.patients.length} 筆，依服務日期由近至遠排列。
-                        </p>
                     </div>
                     <label className="flex items-center gap-2 text-sm text-slate-600 print:hidden">
                         <input
@@ -611,53 +616,49 @@ export const ClinicFollowUp: React.FC<ClinicFollowUpProps> = ({
                     </label>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto print:overflow-visible">
                     <table className="clinic-report-table min-w-full divide-y divide-slate-100">
                         <thead style={{ backgroundColor: BRAND_BLUE }}>
                             <tr>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">服務日期</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">姓名</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">年齡</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">左耳 PTA</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">右耳 PTA</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">聽損程度</th>
-                                <th className="px-4 py-3 text-center text-xs font-semibold text-white uppercase">是否配戴</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">成交金額</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase">轉介費用</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase">主聽力師</th>
+                                <th className="clinic-report-left px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">服務日期</th>
+                                <th className="clinic-report-left px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">姓名</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">生日</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">左耳 PTA</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">右耳 PTA</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">聽損程度</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">成交金額</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-white uppercase whitespace-nowrap">轉介費用</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">主聽力師</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100 text-sm">
                             {selectedReport.patients.map((patient, index) => (
                                 <tr key={`${patient.serviceDate}-${patient.name}-${index}`} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{patient.serviceDate || '—'}</td>
-                                    <td className="px-4 py-3 text-slate-800 font-medium">
+                                    <td className="clinic-report-left px-4 py-3 text-slate-700 whitespace-nowrap">{patient.serviceDate || '—'}</td>
+                                    <td className="clinic-report-left px-4 py-3 text-slate-800 font-medium whitespace-nowrap">
                                         {maskNames ? maskCustomerName(patient.name) : patient.name}
                                     </td>
-                                    <td className="px-4 py-3 text-right text-slate-700">{patient.age ?? '—'}</td>
-                                    <td className={`px-4 py-3 text-right ${patient.leftPTA !== null && patient.leftPTA > ptaThreshold ? 'text-amber-600 font-semibold' : 'text-slate-700'}`}>
+                                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                                        {patient.birthDate
+                                            ? (maskNames ? maskBirthDate(patient.birthDate) : patient.birthDate)
+                                            : '—'}
+                                    </td>
+                                    <td className={`px-4 py-3 text-right whitespace-nowrap ${patient.leftPTA !== null && patient.leftPTA > ptaThreshold ? 'text-amber-600 font-semibold' : 'text-slate-700'}`}>
                                         {patient.leftPTA ?? '—'}
                                     </td>
-                                    <td className={`px-4 py-3 text-right ${patient.rightPTA !== null && patient.rightPTA > ptaThreshold ? 'text-amber-600 font-semibold' : 'text-slate-700'}`}>
+                                    <td className={`px-4 py-3 text-right whitespace-nowrap ${patient.rightPTA !== null && patient.rightPTA > ptaThreshold ? 'text-amber-600 font-semibold' : 'text-slate-700'}`}>
                                         {patient.rightPTA ?? '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-slate-700">{patient.hearingDegree}</td>
-                                    <td className="px-4 py-3 text-center">
-                                        {patient.isDealt ? (
-                                            <span className="text-emerald-600 font-semibold">已配戴</span>
-                                        ) : (
-                                            <span className="text-slate-400">—</span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-slate-700">
+                                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{patient.hearingDegree}</td>
+                                    <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
                                         {patient.isDealt ? formatCurrency(patient.amount) : '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-right text-slate-700">
+                                    <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
                                         {patient.isDealt
                                             ? formatCurrency(calculateReferralFee(patient.amount, referralFeeRate))
                                             : '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-slate-700">{patient.audiologist}</td>
+                                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{patient.audiologist}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -665,7 +666,7 @@ export const ClinicFollowUp: React.FC<ClinicFollowUpProps> = ({
                 </div>
             </div>
 
-            <p className="text-xs text-slate-400 text-center print:text-slate-500">
+            <p className="text-xs text-slate-400 text-center print:hidden">
                 本報告依 {formatDateRange(dateRange)} 之來客紀錄產出，聽損個案以 PTA &gt; {ptaThreshold} dB 為判定標準，
                 轉介費用以已配戴個案成交金額之 {referralFeeRate}% 計算，實際金額以雙方合約約定為準。
             </p>
