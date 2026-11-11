@@ -13,6 +13,10 @@ import { Bar, Doughnut } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { ClinicFollowUpReport, DateRange } from '../types';
 import { buildClinicTalkingPoints } from '../utils/analysis';
+import { daysSinceDate, maskBirthDate, maskCustomerName, formatStoreName } from '../utils/display';
+
+// 既有測試與呼叫端從這裡 import，維持相容。
+export { daysSinceDate, maskBirthDate, maskCustomerName, formatStoreName };
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, ChartDataLabels);
 
@@ -95,47 +99,6 @@ export const calculateReferralFee = (amount: number, ratePercent: number): numbe
 };
 
 const formatCurrency = (amount: number) => `NT$${Math.round(amount).toLocaleString('en-US')}`;
-
-/** 由 'YYYY-MM-DD' 算出距今天數；空字串或無法解析時回傳 null。 */
-export const daysSinceDate = (isoDate: string): number | null => {
-    if (!isoDate) return null;
-
-    const [year, month, day] = isoDate.split('-').map((part) => parseInt(part, 10));
-    if (!year || !month || !day) return null;
-
-    const target = new Date(year, month - 1, day);
-    if (isNaN(target.getTime())) return null;
-
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    return Math.max(0, Math.round((startOfToday.getTime() - target.getTime()) / 86400000));
-};
-
-/** 王大明 -> 王○明；兩個字時只遮後面一個字。 */
-export const maskCustomerName = (name: string): string => {
-    if (name.length <= 1) return name;
-    if (name.length === 2) return `${name[0]}○`;
-    return `${name[0]}${'○'.repeat(name.length - 2)}${name[name.length - 1]}`;
-};
-
-/** 1950/03/12 -> 1950/○○/○○；遮罩時保留年份，仍可辨識年齡層。 */
-export const maskBirthDate = (birthDate: string): string => {
-    if (!birthDate) return '';
-
-    const year = birthDate.match(/\d{4}/);
-    return year ? `${year[0]}/○○/○○` : '○○○';
-};
-
-/**
- * 試算表名稱通常是「門市 + 工作表名」（例：湖口店來客紀錄），
- * 報告表頭只要門市本身，因此把固定的工作表名與前後分隔符去掉。
- */
-export const formatStoreName = (spreadsheetTitle: string): string =>
-    spreadsheetTitle
-        .replace(/來客紀錄/g, '')
-        .replace(/^[\s\-_–—|｜]+|[\s\-_–—|｜]+$/g, '')
-        .trim();
 
 const formatDateRange = (dateRange: DateRange) =>
     `${dateRange.startYear}年${dateRange.startMonth}月 ~ ${dateRange.endYear}年${dateRange.endMonth}月`;

@@ -163,3 +163,62 @@ export interface ClinicFollowUpReport {
   audiologistDistribution: { name: string; count: number }[];
   patients: ClinicPatientRecord[];
 }
+
+/** 待追蹤名單的單筆客戶（只收未成交者；PTA 閾值在顯示端即時套用）。 */
+export interface FollowUpCustomerRecord {
+  spreadsheetId: string;
+  storeName: string;
+  serviceDate: string;
+  sortKey: number;
+  name: string;
+  phone: string;
+  age: number | null;
+  leftPTA: number | null;
+  rightPTA: number | null;
+  worsePTA: number | null;
+  hearingDegree: string;
+  sources: string[];
+  referralUnit: string;
+  audiologist: string;
+  note: string;
+}
+
+export interface FollowUpDataset {
+  /** 分析區間內所有未成交客戶，尚未套用 PTA 閾值。 */
+  records: FollowUpCustomerRecord[];
+  /** 分析區間內總來客數（含已成交）。 */
+  totalCustomers: number;
+  /** 各門市的分析區間總來客數（含已成交），供門市篩選時計算比例。 */
+  storeTotals: { [storeName: string]: number };
+  hasNoteColumn: boolean;
+  hasPhoneColumn: boolean;
+  /** 至少一份來源有左／右耳 PTA 欄位；全部沒有時畫面需提示。 */
+  hasPTAColumn: boolean;
+  skippedSpreadsheets: CompetitionRankingSkippedSpreadsheet[];
+}
+
+export type FollowUpSortKey = 'pta-desc' | 'date-desc' | 'date-asc';
+
+export interface FollowUpFilters {
+  ptaThreshold: number;
+  store?: string;
+  audiologist?: string;
+  degree?: string;
+  source?: string;
+  keyword?: string;
+  sortBy?: FollowUpSortKey;
+}
+
+export interface FollowUpSummary {
+  followUpCount: number;
+  undealtCount: number;
+  totalCustomers: number;
+  /** 待追蹤人數佔同期未成交客戶比例（%）。 */
+  followUpRate: number;
+  /** 較差耳 PTA > 55 dB（中重度以上）的人數。 */
+  severeCount: number;
+  averageWorsePTA: number | null;
+  audiologistDistribution: { name: string; count: number }[];
+  sourceDistribution: { name: string; count: number }[];
+  storeDistribution: { name: string; count: number }[];
+}

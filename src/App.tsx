@@ -7,7 +7,10 @@ import { AnalysisCharts } from './components/AnalysisCharts';
 import { ComparisonView } from './components/ComparisonView';
 import { CompetitionRanking } from './components/CompetitionRanking';
 import { ClinicFollowUp } from './components/ClinicFollowUp';
+import { FollowUpCustomers } from './components/FollowUpCustomers';
 import { DateRange } from './types';
+
+type TabKey = 'overview' | 'comparison' | 'competition' | 'clinic' | 'followup';
 
 const App: React.FC = () => {
   const {
@@ -35,6 +38,13 @@ const App: React.FC = () => {
     competitionSelectionLimit,
     toggleCompetitionSpreadsheetSelection,
     loadCompetitionRanking,
+    spreadsheetId,
+    followUpSources,
+    followUpExtraSpreadsheetIds,
+    followUpLoading,
+    followUpError,
+    followUpSelectionMessage,
+    toggleFollowUpSpreadsheetSelection,
   } = useGoogleSheetData();
 
   // UI Local State for controls
@@ -46,7 +56,7 @@ const App: React.FC = () => {
     endMonth: 12,
   });
   const [ptaThreshold, setPtaThreshold] = useState(40);
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'competition' | 'clinic'>('overview');
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
   // Effect handlers
   const handleSheetUrlSubmit = (e: React.FormEvent) => {
@@ -203,6 +213,15 @@ const App: React.FC = () => {
                 >
                   <span>🏥</span> 診所資料回訪分析
                 </button>
+                <button
+                  onClick={() => setActiveTab('followup')}
+                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${activeTab === 'followup'
+                    ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  <span>🎯</span> 待追蹤客戶
+                </button>
               </div>
 
               <button
@@ -250,6 +269,22 @@ const App: React.FC = () => {
                   dateRange={dateRange}
                   spreadsheetTitle={spreadsheetTitle}
                   ptaThreshold={ptaThreshold}
+                />
+              )}
+
+              {activeTab === 'followup' && (
+                <FollowUpCustomers
+                  sources={followUpSources}
+                  currentSpreadsheetId={spreadsheetId}
+                  dateRange={dateRange}
+                  ptaThreshold={ptaThreshold}
+                  savedSpreadsheets={savedSpreadsheets}
+                  extraSpreadsheetIds={followUpExtraSpreadsheetIds}
+                  onToggleSpreadsheet={toggleFollowUpSpreadsheetSelection}
+                  selectionLimit={competitionSelectionLimit}
+                  selectionMessage={followUpSelectionMessage}
+                  loading={followUpLoading}
+                  error={followUpError}
                 />
               )}
             </div>

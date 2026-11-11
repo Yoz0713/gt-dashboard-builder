@@ -10,8 +10,13 @@ import {
     ClinicFollowUpReport,
     ClinicMonthlyPoint,
     ClinicPatientRecord,
+    FollowUpCustomerRecord,
+    FollowUpDataset,
+    FollowUpFilters,
+    FollowUpSummary,
 } from '../types';
 import { parseAmount, getEarPTA, getHearingLossDegree, parseAge } from './parsers';
+import { formatStoreName } from './display';
 
 export interface AnalysisResult {
     customerAnalysis: CustomerAnalysis;
@@ -47,24 +52,54 @@ const findDateColumnIndex = (headers: string[]) => {
     return -1;
 };
 
-const findStoreNameHeader = (headers: string[]) => {
-    const preferredPatterns = [
-        '轉介門市名稱',
-        '轉介門市',
-        '轉介店',
-        '轉介店別',
-        '門市名稱',
-        'store',
-    ];
+const STORE_NAME_PATTERNS = [
+    '轉介門市名稱',
+    '轉介門市',
+    '轉介店',
+    '轉介店別',
+    '門市名稱',
+    'store',
+];
 
-    for (const pattern of preferredPatterns) {
+/** 依優先序模糊比對表頭；找不到回傳空字串。 */
+const findHeaderByPatterns = (headers: string[], patterns: string[]) => {
+    for (const pattern of patterns) {
         const matchedHeader = headers.find((header) => normalizeHeader(header).includes(pattern.toLowerCase()));
         if (matchedHeader) {
             return matchedHeader;
         }
     }
 
-    return headers[11];
+    return '';
+};
+
+const findStoreNameHeader = (headers: string[]) =>
+    findHeaderByPatterns(headers, STORE_NAME_PATTERNS) || headers[11];
+
+const findStatusColumnIndex = (headers: string[]) =>
+    headers.findIndex(header =>
+        header.includes('成交') || header.includes('狀態') || header.includes('Status')
+    );
+
+const DEALT_KEYS = [
+    '是否成交', '成交', '狀態', 'Status', 'IsDealt', 'Dealt',
+    '是否借機', '是否有借機', '借機'
+];
+
+const DEALT_VALUES = ['是', 'TRUE', 'True', 'true', '成交', '已成交', 'OK', 'Success'];
+
+/**
+ * 建立「是否成交」判定函式。所有分析（總覽、診所回訪、待追蹤名單）共用同一套規則，
+ * 避免某一頁把已成交客戶當成未成交。
+ */
+export const createDealtChecker = (headers: string[]) => {
+    const statusColumnIndex = findStatusColumnIndex(headers);
+    const keysToCheck = statusColumnIndex !== -1
+        ? [...DEALT_KEYS, headers[statusColumnIndex]]
+        : DEALT_KEYS;
+
+    return (customer: { [key: string]: string }) =>
+        keysToCheck.some(key => DEALT_VALUES.includes((customer[key] || '').trim()));
 };
 
 const parseSheetDate = (value: string | undefined): Date | null => {
@@ -218,9 +253,7 @@ export const analyzeData = (
 
     // 尋找相關欄位
     const dateColumnIndex = findDateColumnIndex(headers);
-    const statusColumnIndex = headers.findIndex(header =>
-        header.includes('成交') || header.includes('狀態') || header.includes('Status')
-    );
+    const statusColumnIndex = findStatusColumnIndex(headers);
     const amountColumnIndex = headers.findIndex(header =>
         header.includes('金額') || header.includes('Amount') || header.includes('價格')
     );
@@ -326,23 +359,7 @@ export const analyzeData = (
         return customerObject;
     });
 
-    // Helper to check if a customer is dealt
-    const checkIsDealt = (customer: { [key: string]: string }) => {
-        const keysToCheck = [
-            '是否成交', '成交', '狀態', 'Status', 'IsDealt', 'Dealt',
-            '是否借機', '是否有借機', '借機'
-        ];
-
-        // Also check the detected status column
-        if (statusColumnIndex !== -1) {
-            keysToCheck.push(headers[statusColumnIndex]);
-        }
-
-        return keysToCheck.some(key => {
-            const val = (customer[key] || '').trim();
-            return ['是', 'TRUE', 'True', 'true', '成交', '已成交', 'OK', 'Success'].includes(val);
-        });
-    };
+    const checkIsDealt = createDealtChecker(headers);
 
     const storeNameHeader = findStoreNameHeader(headers) || headers[11];
 
@@ -1275,4 +1292,262 @@ export const buildClinicTalkingPoints = (
     }
 
     return points;
+};
+
+// ---------------------------------------------------------------------------
+// 未成交潛力客戶追蹤（待追蹤客戶名單）
+// ---------------------------------------------------------------------------
+
+const NOTE_HEADER_PATTERNS = ['備註', '追蹤', '回訪', 'note', 'remark'];
+
+const PHONE_HEADER_PATTERNS = ['手機', '行動電話', '電話', 'phone', 'mobile'];
+
+/** 「電話回訪紀錄」這類欄位是備註，不是電話號碼。 */
+const findPhoneHeader = (headers: string[]) =>
+    findHeaderByPatterns(
+        headers.filter((header) => !NOTE_HEADER_PATTERNS.some((pattern) => normalizeHeader(header).includes(pattern))),
+        PHONE_HEADER_PATTERNS
+    );
+
+/**
+ * Google 試算表把手機號碼當數字時會吃掉開頭的 0（0912345678 → 912345678），
+ * 只在「剛好 9 碼且 9 開頭」這種明確情況補回，其餘保留原樣。
+ */
+export const normalizePhone = (value: string): string => {
+    const phone = (value || '').trim();
+    return /^9\d{8}$/.test(phone) ? `0${phone}` : phone;
+};
+
+const INVALID_SOURCE_VALUES = new Set(['', '#N/A', 'N/A']);
+
+/** 較差耳 PTA 高於此值即為「中重度以上」（對應 getHearingLossDegree 的分級）。 */
+export const SEVERE_PTA_THRESHOLD = 55;
+
+const findSourceHeader = (headers: string[]) =>
+    headers.find((header) =>
+        header.includes('來源') || header.toLowerCase().includes('source') || header.includes('渠道')
+    ) || '';
+
+const hasEarPTAHeader = (headers: string[]) =>
+    headers.some((header) => {
+        const normalized = header.toUpperCase();
+        return (normalized.includes('左耳') || normalized.includes('右耳')) && normalized.includes('PTA');
+    });
+
+/**
+ * 把一或多份試算表整理成「分析區間內所有未成交客戶」的逐筆名單。
+ * PTA 閾值刻意不在這裡套用：畫面上調整閾值時只需在記憶體內重新篩選，不必重抓資料。
+ */
+export const buildFollowUpDataset = (
+    sources: CompetitionSheetSource[],
+    dateRange: DateRange
+): FollowUpDataset => {
+    const records: FollowUpCustomerRecord[] = [];
+    const skippedSpreadsheets: CompetitionRankingSkippedSpreadsheet[] = [];
+    const storeTotals: { [storeName: string]: number } = {};
+    let totalCustomers = 0;
+    let hasNoteColumn = false;
+    let hasPhoneColumn = false;
+    let hasPTAColumn = false;
+
+    sources.forEach(({ spreadsheetId, spreadsheetTitle, sheetData }) => {
+        const values = sheetData?.values;
+        if (!values || values.length < 2) {
+            skippedSpreadsheets.push({
+                spreadsheetId,
+                spreadsheetTitle,
+                reason: '資料列不足，無法納入待追蹤名單。',
+            });
+            return;
+        }
+
+        const headers = values[0];
+        const dateColumnIndex = findDateColumnIndex(headers);
+        if (dateColumnIndex === -1) {
+            skippedSpreadsheets.push({
+                spreadsheetId,
+                spreadsheetTitle,
+                reason: '缺少服務日期欄位，無法納入待追蹤名單。',
+            });
+            return;
+        }
+
+        const isDealt = createDealtChecker(headers);
+        const clinicHeader = findClinicNameHeader(headers);
+        const referralStoreHeader = findHeaderByPatterns(headers, STORE_NAME_PATTERNS);
+        const sourceHeader = findSourceHeader(headers);
+        const noteHeader = findHeaderByPatterns(headers, NOTE_HEADER_PATTERNS);
+        const phoneHeader = findPhoneHeader(headers);
+        const storeName = formatStoreName(spreadsheetTitle) || spreadsheetTitle || spreadsheetId;
+
+        if (noteHeader) hasNoteColumn = true;
+        if (phoneHeader) hasPhoneColumn = true;
+        if (hasEarPTAHeader(headers)) hasPTAColumn = true;
+
+        for (let i = 1; i < values.length; i++) {
+            const row = values[i];
+            if (!row) continue;
+
+            const rawDate = (row[dateColumnIndex] || '').trim();
+            const date = parseSheetDate(rawDate);
+            if (!date || !isDateInRange(date, dateRange)) continue;
+
+            const customer: { [key: string]: string } = {};
+            headers.forEach((header, index) => {
+                customer[header] = row[index] || '';
+            });
+
+            totalCustomers++;
+            storeTotals[storeName] = (storeTotals[storeName] || 0) + 1;
+
+            if (isDealt(customer)) continue;
+
+            const rawLeftPTA = getEarPTA(customer, '左');
+            const rawRightPTA = getEarPTA(customer, '右');
+            const leftPTA = isNaN(rawLeftPTA) ? null : rawLeftPTA;
+            const rightPTA = isNaN(rawRightPTA) ? null : rawRightPTA;
+            const worsePTA = leftPTA === null && rightPTA === null
+                ? null
+                : Math.max(leftPTA === null ? -Infinity : leftPTA, rightPTA === null ? -Infinity : rightPTA);
+
+            const name = findCustomerValueByKeyword(
+                customer,
+                (key) => key.includes('姓名') || key.includes('name')
+            ) || '未命名';
+
+            const rawBirthDate = findCustomerValueByKeyword(
+                customer,
+                (key) => key.includes('生日') || key.includes('出生') || key.includes('birth')
+            );
+            // 明細只顯示歲數：先把生日正規化成 YYYY/MM/DD，「1950年3月12日」這類寫法也能推算年齡。
+            const rawAge = parseAge(customer['年齡'] || customer['Age'], formatBirthDate(rawBirthDate));
+
+            const customerSources = (sourceHeader ? customer[sourceHeader] : '')
+                .split(/[\n,，、;；]/)
+                .map((source) => source.trim())
+                .filter((source) => !INVALID_SOURCE_VALUES.has(source));
+
+            const clinicName = clinicHeader ? (customer[clinicHeader] || '').trim() : '';
+            const referralStore = referralStoreHeader ? (customer[referralStoreHeader] || '').trim() : '';
+            const referralUnit = !INVALID_STORE_NAMES.has(clinicName)
+                ? clinicName
+                : (!INVALID_STORE_NAMES.has(referralStore) ? referralStore : '');
+
+            records.push({
+                spreadsheetId,
+                storeName,
+                serviceDate: rawDate,
+                sortKey: date.getTime(),
+                name,
+                phone: phoneHeader ? normalizePhone(customer[phoneHeader]) : '',
+                age: isNaN(rawAge) ? null : rawAge,
+                leftPTA,
+                rightPTA,
+                worsePTA,
+                hearingDegree: worsePTA === null ? '未知' : getHearingLossDegree(worsePTA),
+                sources: customerSources,
+                referralUnit,
+                audiologist: (customer['主聽力師'] || customer['聽力師'] || '').trim() || '未知',
+                note: noteHeader ? (customer[noteHeader] || '').trim() : '',
+            });
+        }
+    });
+
+    records.sort((a, b) => b.sortKey - a.sortKey);
+
+    return {
+        records,
+        totalCustomers,
+        storeTotals,
+        hasNoteColumn,
+        hasPhoneColumn,
+        hasPTAColumn,
+        skippedSpreadsheets,
+    };
+};
+
+/**
+ * 依 PTA 閾值與輔助條件篩出待追蹤客戶並排序。
+ * 條件為較差耳 PTA「嚴格大於」閾值（與全系統的聽損判定一致）；雙耳 PTA 皆無法解析者不列入。
+ */
+export const selectFollowUpCustomers = (
+    records: FollowUpCustomerRecord[],
+    filters: FollowUpFilters
+): FollowUpCustomerRecord[] => {
+    const keyword = (filters.keyword || '').trim().toLowerCase();
+
+    const selected = records.filter((record) =>
+        record.worsePTA !== null
+        && record.worsePTA > filters.ptaThreshold
+        && (!filters.store || record.storeName === filters.store)
+        && (!filters.audiologist || record.audiologist === filters.audiologist)
+        && (!filters.degree || record.hearingDegree === filters.degree)
+        && (!filters.source || record.sources.includes(filters.source) || record.referralUnit === filters.source)
+        && (!keyword || record.name.toLowerCase().includes(keyword))
+    );
+
+    const sortBy = filters.sortBy || 'pta-desc';
+
+    return [...selected].sort((a, b) => {
+        if (sortBy === 'date-asc') return a.sortKey - b.sortKey;
+        if (sortBy === 'date-desc') return b.sortKey - a.sortKey;
+
+        const ptaDiff = (b.worsePTA ?? -Infinity) - (a.worsePTA ?? -Infinity);
+        return ptaDiff !== 0 ? ptaDiff : b.sortKey - a.sortKey;
+    });
+};
+
+const toDistribution = (counts: { [name: string]: number }) =>
+    Object.entries(counts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.name.localeCompare(b.name)));
+
+/**
+ * 待追蹤名單的摘要指標。
+ * 比例的分母是「同一門市範圍內的未成交客戶」：選了單一門市時只跟該門市比，避免跨店比例失真。
+ */
+export const summarizeFollowUpCustomers = (
+    selected: FollowUpCustomerRecord[],
+    dataset: FollowUpDataset,
+    store?: string
+): FollowUpSummary => {
+    const undealtCount = store
+        ? dataset.records.filter((record) => record.storeName === store).length
+        : dataset.records.length;
+    const totalCustomers = store ? (dataset.storeTotals[store] || 0) : dataset.totalCustomers;
+
+    const audiologistCounts: { [name: string]: number } = {};
+    const sourceCounts: { [name: string]: number } = {};
+    const storeCounts: { [name: string]: number } = {};
+    let severeCount = 0;
+    let ptaSum = 0;
+    let ptaCount = 0;
+
+    selected.forEach((record) => {
+        audiologistCounts[record.audiologist] = (audiologistCounts[record.audiologist] || 0) + 1;
+        storeCounts[record.storeName] = (storeCounts[record.storeName] || 0) + 1;
+
+        const recordSources = record.sources.length > 0 ? record.sources : ['未填寫'];
+        recordSources.forEach((source) => {
+            sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+        });
+
+        if (record.worsePTA !== null) {
+            ptaSum += record.worsePTA;
+            ptaCount++;
+            if (record.worsePTA > SEVERE_PTA_THRESHOLD) severeCount++;
+        }
+    });
+
+    return {
+        followUpCount: selected.length,
+        undealtCount,
+        totalCustomers,
+        followUpRate: undealtCount > 0 ? (selected.length / undealtCount) * 100 : 0,
+        severeCount,
+        averageWorsePTA: ptaCount > 0 ? Math.round((ptaSum / ptaCount) * 10) / 10 : null,
+        audiologistDistribution: toDistribution(audiologistCounts),
+        sourceDistribution: toDistribution(sourceCounts),
+        storeDistribution: toDistribution(storeCounts),
+    };
 };

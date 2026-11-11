@@ -50,9 +50,14 @@
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important; 
       gap: 1rem !important;
   }
-  .print\:grid-cols-4 { 
-      display: grid !important; 
-      grid-template-columns: repeat(4, minmax(0, 1fr)) !important; 
+  .print\:grid-cols-3 {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 1rem !important;
+  }
+  .print\:grid-cols-4 {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
       gap: 1rem !important;
   }
 
@@ -92,6 +97,11 @@
   .clinic-report-table td {
       white-space: nowrap !important;
       padding: 4px 6px !important;
+  }
+  /* 待追蹤名單的備註欄內容長短不一，允許折行，否則整張表會被撐出 A4。 */
+  .clinic-report-table td.clinic-report-wrap {
+      white-space: normal !important;
+      min-width: 8rem;
   }
   /* 螢幕上用來水平捲動的容器，列印時會把超出的欄位裁掉。 */
   .clinic-report-detail .overflow-x-auto {

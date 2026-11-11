@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
 import {
     UserProfile,
@@ -8,6 +8,7 @@ import {
     SpreadsheetListItem,
     CompetitionRankingEntry,
     CompetitionRankingSkippedSpreadsheet,
+    CompetitionSheetSource,
 } from '../types';
 import { fetchUserProfile, fetchSpreadsheetMetadata, fetchSheetData as apiFetchSheetData } from '../services/googleSheets';
 import { fetchSavedSpreadsheets, fetchSpreadsheetData, fetchMultipleSpreadsheets } from '../services/sheetsApi';
@@ -33,6 +34,13 @@ export const useGoogleSheetData = () => {
     const [competitionLoading, setCompetitionLoading] = useState<boolean>(false);
     const [competitionError, setCompetitionError] = useState<string>('');
     const [competitionSelectionMessage, setCompetitionSelectionMessage] = useState<string>('');
+    // 待追蹤名單：目前載入的門市一律納入，這裡只記「額外合併」的已儲存試算表。
+    const [followUpExtraSpreadsheetIds, setFollowUpExtraSpreadsheetIds] = useState<string[]>([]);
+    // 已抓回的原始列快取；日期區間或閾值變動只在記憶體內重算，不重抓。
+    const [followUpSheetCache, setFollowUpSheetCache] = useState<Record<string, SheetData>>({});
+    const [followUpLoading, setFollowUpLoading] = useState<boolean>(false);
+    const [followUpError, setFollowUpError] = useState<string>('');
+    const [followUpSelectionMessage, setFollowUpSelectionMessage] = useState<string>('');
 
     // Google Login
     const login = useGoogleLogin({
@@ -75,6 +83,11 @@ export const useGoogleSheetData = () => {
         setCompetitionLoading(false);
         setCompetitionError('');
         setCompetitionSelectionMessage('');
+        setFollowUpExtraSpreadsheetIds([]);
+        setFollowUpSheetCache({});
+        setFollowUpLoading(false);
+        setFollowUpError('');
+        setFollowUpSelectionMessage('');
         setError('');
     }, []);
 
@@ -245,6 +258,100 @@ export const useGoogleSheetData = () => {
         }
     }, [savedSpreadsheets, selectedCompetitionSpreadsheetIds]);
 
+    // 已不在清單中的試算表、或剛好變成目前門市的試算表，從額外合併名單移除。
+    useEffect(() => {
+        const savedSpreadsheetIds = new Set(savedSpreadsheets.map((sheet) => sheet.id));
+
+        setFollowUpExtraSpreadsheetIds((previousIds) => {
+            const filteredIds = previousIds.filter((id) => savedSpreadsheetIds.has(id) && id !== spreadsheetId);
+            return filteredIds.length === previousIds.length ? previousIds : filteredIds;
+        });
+    }, [savedSpreadsheets, spreadsheetId]);
+
+    const toggleFollowUpSpreadsheetSelection = useCallback((spreadsheetIdToToggle: string) => {
+        // 目前門市固定納入，不能取消。
+        if (spreadsheetIdToToggle === spreadsheetId) return;
+
+        setFollowUpSelectionMessage('');
+
+        setFollowUpExtraSpreadsheetIds((previousIds) => {
+            if (previousIds.includes(spreadsheetIdToToggle)) {
+                return previousIds.filter((id) => id !== spreadsheetIdToToggle);
+            }
+
+            // 上限含目前門市本身。
+            if (previousIds.length + 1 >= COMPETITION_SELECTION_LIMIT) {
+                setFollowUpSelectionMessage(`待追蹤名單最多合併 ${COMPETITION_SELECTION_LIMIT} 份試算表（含目前門市）。`);
+                return previousIds;
+            }
+
+            return [...previousIds, spreadsheetIdToToggle];
+        });
+    }, [spreadsheetId]);
+
+    // 只抓快取中還沒有的試算表。
+    useEffect(() => {
+        const missingIds = followUpExtraSpreadsheetIds.filter((id) => !followUpSheetCache[id]);
+        if (missingIds.length === 0) return;
+
+        let cancelled = false;
+
+        const loadMissing = async () => {
+            try {
+                setFollowUpLoading(true);
+                setFollowUpError('');
+                const sheets = await fetchMultipleSpreadsheets(missingIds);
+                if (cancelled) return;
+
+                setFollowUpSheetCache((previousCache) => {
+                    const nextCache = { ...previousCache };
+                    sheets.forEach(({ spreadsheetId: id, sheetData: fetchedSheetData }) => {
+                        nextCache[id] = fetchedSheetData;
+                    });
+                    return nextCache;
+                });
+            } catch (err: any) {
+                if (cancelled) return;
+                setFollowUpError(err.message || 'Failed to load spreadsheets for follow-up list');
+                // 抓取失敗的試算表取消勾選，避免 effect 反覆重試。
+                setFollowUpExtraSpreadsheetIds((previousIds) => previousIds.filter((id) => !missingIds.includes(id)));
+            } finally {
+                if (!cancelled) setFollowUpLoading(false);
+            }
+        };
+
+        loadMissing();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [followUpExtraSpreadsheetIds, followUpSheetCache]);
+
+    const followUpSources = useMemo<CompetitionSheetSource[]>(() => {
+        const sources: CompetitionSheetSource[] = [];
+
+        if (sheetData) {
+            sources.push({
+                spreadsheetId: spreadsheetId || 'current',
+                spreadsheetTitle: spreadsheetTitle || '目前門市',
+                sheetData,
+            });
+        }
+
+        followUpExtraSpreadsheetIds.forEach((id) => {
+            const cachedSheetData = followUpSheetCache[id];
+            if (!cachedSheetData || id === spreadsheetId) return;
+
+            sources.push({
+                spreadsheetId: id,
+                spreadsheetTitle: savedSpreadsheets.find((sheet) => sheet.id === id)?.title || id,
+                sheetData: cachedSheetData,
+            });
+        });
+
+        return sources;
+    }, [sheetData, spreadsheetId, spreadsheetTitle, followUpExtraSpreadsheetIds, followUpSheetCache, savedSpreadsheets]);
+
     return {
         user,
         accessToken,
@@ -264,6 +371,12 @@ export const useGoogleSheetData = () => {
         competitionError,
         competitionSelectionMessage,
         competitionSelectionLimit: COMPETITION_SELECTION_LIMIT,
+        followUpSources,
+        followUpExtraSpreadsheetIds,
+        followUpLoading,
+        followUpError,
+        followUpSelectionMessage,
+        toggleFollowUpSpreadsheetSelection,
         setSpreadsheetId,
         setSelectedSheet,
         login,

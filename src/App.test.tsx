@@ -34,6 +34,10 @@ jest.mock('./components/ClinicFollowUp', () => ({
     ClinicFollowUp: () => <div>clinic-follow-up-view</div>,
 }));
 
+jest.mock('./components/FollowUpCustomers', () => ({
+    FollowUpCustomers: () => <div>follow-up-customers-view</div>,
+}));
+
 const mockedUseGoogleSheetData = useGoogleSheetData as jest.MockedFunction<typeof useGoogleSheetData>;
 
 describe('App report tabs', () => {
@@ -79,6 +83,12 @@ describe('App report tabs', () => {
             competitionError: '',
             competitionSelectionMessage: '',
             competitionSelectionLimit: 10,
+            followUpSources: [],
+            followUpExtraSpreadsheetIds: [],
+            followUpLoading: false,
+            followUpError: '',
+            followUpSelectionMessage: '',
+            toggleFollowUpSpreadsheetSelection: jest.fn(),
             setSpreadsheetId: jest.fn(),
             setSelectedSheet: jest.fn(),
             login: jest.fn(),
@@ -112,9 +122,13 @@ describe('App report tabs', () => {
         expect(screen.getByText('clinic-follow-up-view')).toBeInTheDocument();
         expect(screen.queryByText('competition-ranking-view')).not.toBeInTheDocument();
 
+        await user.click(screen.getByRole('button', { name: /待追蹤客戶/i }));
+        expect(screen.getByText('follow-up-customers-view')).toBeInTheDocument();
+        expect(screen.queryByText('clinic-follow-up-view')).not.toBeInTheDocument();
+
         await user.click(screen.getByRole('button', { name: /總覽分析/i }));
         expect(screen.getByText('dashboard-stats')).toBeInTheDocument();
         expect(screen.getByText('analysis-charts')).toBeInTheDocument();
-        expect(screen.queryByText('clinic-follow-up-view')).not.toBeInTheDocument();
+        expect(screen.queryByText('follow-up-customers-view')).not.toBeInTheDocument();
     });
 });
