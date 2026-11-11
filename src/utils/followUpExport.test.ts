@@ -7,13 +7,18 @@ import { FollowUpCustomerRecord } from '../types';
 import {
     buildFollowUpExportTable,
     buildFollowUpFileName,
+    buildPhoneListTable,
     COLUMN_WIDTH,
     createFollowUpWorkbook,
     EVEN_ROW_FILL,
     FOLLOW_UP_SHEET_NAME,
     NOTE_COLUMN_WIDTH,
     ODD_ROW_FILL,
+    partitionExportableRecords,
+    PHONE_LIST_SHEET_NAME,
     ROW_HEIGHT,
+    TEXT_NUM_FMT,
+    toValidMobile,
 } from './followUpExport';
 
 /** 欄寬預設 15，以下欄位單獨設定。 */
@@ -38,169 +43,251 @@ const createRecord = (overrides: Partial<FollowUpCustomerRecord> = {}): FollowUp
     ...overrides,
 });
 
+// 依畫面排序：王（正確）、陳（沒電話）、林（市話）、趙（被吃掉開頭 0）、吳（亂碼）
 const records = [
     createRecord(),
+    createRecord({ name: '陳美麗', phone: '' }),
+    createRecord({ name: '林市話', phone: '03-5551234' }),
     createRecord({
-        name: '陳美麗',
-        phone: '',
-        serviceDate: '2025-02-10',
-        sortKey: new Date(2025, 1, 10).getTime(),
+        name: '趙極重',
+        phone: '933111222',
+        serviceDate: '2025-04-01',
+        sortKey: new Date(2025, 3, 1).getTime(),
         age: null,
-        leftPTA: 45,
+        leftPTA: 95,
         rightPTA: null,
-        worsePTA: 45,
-        hearingDegree: '中度',
+        worsePTA: 95,
+        hearingDegree: '極重度',
         sources: [],
         referralUnit: '',
-        note: '',
+        note: '想先比較價格\r\n 下個月再聯絡 ',
     }),
+    createRecord({ name: '吳亂碼', phone: '12345' }),
 ];
+
+const options = { maskNames: false, includeNote: true };
 
 const meta = {
     storeLabel: '湖口店',
     generatedAt: new Date(2025, 10, 11, 9, 30),
 };
 
+const column = (table: { columns: { header: string }[] }, header: string) =>
+    table.columns.findIndex((item) => item.header === header);
+
+describe('toValidMobile', () => {
+    it.each([
+        ['0912345678', '0912345678'],
+        ['0912-345-678', '0912345678'],
+        ['0912 345 678', '0912345678'],
+        ['(0912)345678', '0912345678'],
+        ['912345678', '0912345678'],
+        ['+886 912 345 678', '0912345678'],
+        ['+886-0912-345-678', '0912345678'],
+        ['０９１２３４５６７８', '0912345678'],
+        ['03-5551234\n0933111222', '0933111222'],
+        ['0912345678、0933111222', '0912345678'],
+        ['0912345678 0933111222', '0912345678'],
+        ['0912-345-678（本人）', '0912345678'],
+    ])('normalizes %p to %p', (raw, expected) => {
+        expect(toValidMobile(raw)).toBe(expected);
+    });
+
+    it.each([
+        [''],
+        ['   '],
+        ['03-5551234'],
+        ['02-29123456'],
+        ['12345'],
+        ['091234567'],
+        ['09123456789'],
+        ['0812345678'],
+        ['無'],
+        ['#N/A'],
+    ])('rejects %p', (raw) => {
+        expect(toValidMobile(raw)).toBeNull();
+    });
+});
+
+describe('partitionExportableRecords', () => {
+    it('keeps customers with a valid mobile in on-screen order and reports the rest', () => {
+        const { exportable, skipped } = partitionExportableRecords(records);
+
+        expect(exportable.map(({ record, mobile }) => [record.name, mobile])).toEqual([
+            ['王大明', '0912345678'],
+            ['趙極重', '0933111222'],
+        ]);
+        expect(skipped.map((record) => record.name)).toEqual(['陳美麗', '林市話', '吳亂碼']);
+    });
+});
+
 describe('buildFollowUpExportTable', () => {
-    it('includes phone and note columns only when requested', () => {
-        const withAll = buildFollowUpExportTable(records, { maskNames: false, includePhone: true, includeNote: true });
-        expect(withAll.columns.map((column) => column.header)).toEqual([
+    it('always includes a text-formatted phone column; note column only when requested', () => {
+        const withNote = buildFollowUpExportTable(records, options);
+        expect(withNote.columns.map((item) => item.header)).toEqual([
             '門市', '服務日期', '姓名', '電話', '年齡', '左耳 PTA', '右耳 PTA',
             '聽損程度', '顧客來源', '轉介單位', '主聽力師', '備註',
         ]);
-        expect(withAll.columns.map((column) => column.header)).not.toContain('距今天數');
-        expect(withAll.columns.map((column) => column.header)).not.toContain('較差耳 PTA');
+        expect(withNote.columns[column(withNote, '電話')].numFmt).toBe(TEXT_NUM_FMT);
 
-        const minimal = buildFollowUpExportTable(records, { maskNames: false, includePhone: false, includeNote: false });
-        expect(minimal.columns.map((column) => column.header)).not.toContain('電話');
-        expect(minimal.columns.map((column) => column.header)).not.toContain('備註');
-        expect(minimal.rows[0]).toHaveLength(minimal.columns.length);
+        const withoutNote = buildFollowUpExportTable(records, { ...options, includeNote: false });
+        expect(withoutNote.columns.map((item) => item.header)).not.toContain('備註');
+        expect(withoutNote.columns.map((item) => item.header)).toContain('電話');
+        expect(withoutNote.rows[0]).toHaveLength(withoutNote.columns.length);
     });
 
-    it('writes dates as UTC-midnight dates and numbers as numbers', () => {
-        const { columns, rows } = buildFollowUpExportTable(records, { maskNames: false, includePhone: true, includeNote: true });
-        const cell = (row: number, header: string) => rows[row][columns.findIndex((column) => column.header === header)];
+    it('removes customers without a phone or with an invalid phone, and normalizes the rest to 09xxxxxxxx', () => {
+        const table = buildFollowUpExportTable(records, options);
 
-        expect(cell(0, '服務日期')).toEqual(new Date(Date.UTC(2025, 0, 5)));
-        expect(cell(0, '年齡')).toBe(70);
-        expect(cell(0, '左耳 PTA')).toBe(60);
-        expect(cell(0, '顧客來源')).toBe('診所轉介、聽篩');
-        expect(cell(0, '電話')).toBe('0912-345-678');
-        // 空值輸出為空白儲存格，而不是 0 或「—」
-        expect(cell(1, '年齡')).toBeNull();
-        expect(cell(1, '右耳 PTA')).toBeNull();
+        expect(table.rows.map((row) => row[column(table, '姓名')])).toEqual(['王大明', '趙極重']);
+        expect(table.rows.map((row) => row[column(table, '電話')])).toEqual(['0912345678', '0933111222']);
+        table.rows.forEach((row) => expect(typeof row[column(table, '電話')]).toBe('string'));
     });
 
-    it('flattens multi-line phone / note cells into one line so a 25pt row shows everything', () => {
-        const { columns, rows } = buildFollowUpExportTable(
-            [createRecord({ phone: '0912345678\n03-5551234', note: '想先比較價格\r\n 下個月再聯絡 ' })],
-            { maskNames: false, includePhone: true, includeNote: true }
-        );
+    it('writes dates as UTC-midnight dates, numbers as numbers and blanks as empty cells', () => {
+        const table = buildFollowUpExportTable(records, options);
+        const [wang, zhao] = table.rows;
 
-        expect(rows[0][columns.findIndex((column) => column.header === '電話')]).toBe('0912345678；03-5551234');
-        expect(rows[0][columns.findIndex((column) => column.header === '備註')]).toBe('想先比較價格；下個月再聯絡');
+        expect(wang[column(table, '服務日期')]).toEqual(new Date(Date.UTC(2025, 0, 5)));
+        expect(wang[column(table, '年齡')]).toBe(70);
+        expect(wang[column(table, '左耳 PTA')]).toBe(60);
+        expect(wang[column(table, '顧客來源')]).toBe('診所轉介、聽篩');
+        expect(zhao[column(table, '年齡')]).toBeNull();
+        expect(zhao[column(table, '右耳 PTA')]).toBeNull();
+        // 列高固定 25，多行備註合併成一行
+        expect(zhao[column(table, '備註')]).toBe('想先比較價格；下個月再聯絡');
     });
 
     it('uses width 15 for every column except note 150, phone 32 and customer source 26', () => {
-        const { columns } = buildFollowUpExportTable(records, { maskNames: false, includePhone: true, includeNote: true });
+        const { columns } = buildFollowUpExportTable(records, options);
 
-        columns.forEach((column) => {
-            expect(column.width).toBe(EXPECTED_WIDTHS[column.header] ?? COLUMN_WIDTH);
-        });
-        expect(COLUMN_WIDTH).toBe(15);
+        columns.forEach((item) => expect(item.width).toBe(EXPECTED_WIDTHS[item.header] ?? COLUMN_WIDTH));
         expect(NOTE_COLUMN_WIDTH).toBe(150);
     });
 
     it('applies name / phone masking when the mask toggle is on', () => {
-        const { columns, rows } = buildFollowUpExportTable(records, { maskNames: true, includePhone: true, includeNote: false });
+        const table = buildFollowUpExportTable(records, { ...options, maskNames: true });
 
-        expect(rows[0][columns.findIndex((column) => column.header === '姓名')]).toBe('王○明');
-        expect(rows[0][columns.findIndex((column) => column.header === '電話')]).toBe('0912-○○○-678');
+        expect(table.rows[0][column(table, '姓名')]).toBe('王○明');
+        expect(table.rows[0][column(table, '電話')]).toBe('0912○○○678');
+    });
+});
+
+describe('buildPhoneListTable', () => {
+    it('extracts only name and phone for the same customers in the same order', () => {
+        const table = buildPhoneListTable(records, options);
+
+        expect(table.columns.map((item) => [item.header, item.width, item.numFmt])).toEqual([
+            ['姓名', 15, undefined],
+            ['電話', 32, TEXT_NUM_FMT],
+        ]);
+        expect(table.rows).toEqual([
+            ['王大明', '0912345678'],
+            ['趙極重', '0933111222'],
+        ]);
+    });
+
+    it('follows the mask toggle too', () => {
+        expect(buildPhoneListTable(records, { ...options, maskNames: true }).rows).toEqual([
+            ['王○明', '0912○○○678'],
+            ['趙○重', '0933○○○222'],
+        ]);
     });
 });
 
 describe('createFollowUpWorkbook', () => {
-    const roundTrip = async () => {
-        const workbook = await createFollowUpWorkbook(records, { maskNames: false, includePhone: true, includeNote: true }, meta);
-        const buffer = await workbook.xlsx.writeBuffer();
-        return buffer as ArrayBuffer;
-    };
-
-    it('produces an xlsx whose first sheet has an auto filter over header + data and a frozen header row', async () => {
-        const buffer = await roundTrip();
-        const zip = await JSZip.loadAsync(buffer);
-        const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
-
-        // 12 欄（A~L），表頭 + 2 筆資料
-        expect(sheetXml).toContain('<autoFilter ref="A1:L3"');
-        expect(sheetXml).toMatch(/<pane[^>]*ySplit="1"[^>]*state="frozen"/);
-    });
-
-    it('can be read back with the expected header and values, as a single worksheet', async () => {
-        const buffer = await roundTrip();
+    const loadWorkbook = async (input: FollowUpCustomerRecord[] = records, exportOptions = options) => {
+        const workbook = await createFollowUpWorkbook(input, exportOptions, meta);
+        const buffer = await workbook.xlsx.writeBuffer() as ArrayBuffer;
         const loaded = new ExcelJS.Workbook();
         await loaded.xlsx.load(buffer);
+        return { buffer, loaded };
+    };
 
-        const sheet = loaded.getWorksheet(FOLLOW_UP_SHEET_NAME)!;
-        expect(sheet.getRow(1).getCell(1).value).toBe('門市');
-        expect(sheet.getRow(1).getCell(1).font?.bold).toBe(true);
-        expect(sheet.rowCount).toBe(3);
+    const sheetXml = async (buffer: ArrayBuffer, index: number) => {
+        const zip = await JSZip.loadAsync(buffer);
+        return zip.file(`xl/worksheets/sheet${index}.xml`)!.async('string');
+    };
 
-        const row = sheet.getRow(2);
+    /** 兩個工作表必須套用一模一樣的格式。 */
+    const expectUniformFormatting = (sheet: ExcelJS.Worksheet, columnCount: number, dataRowCount: number) => {
+        const fillOf = (row: number, col: number) =>
+            (sheet.getRow(row).getCell(col).fill as { fgColor?: { argb?: string } }).fgColor?.argb;
+
+        for (let col = 1; col <= columnCount; col++) {
+            const header = sheet.getRow(1).getCell(col).value as string;
+            expect(sheet.getColumn(col).width).toBe(EXPECTED_WIDTHS[header] ?? COLUMN_WIDTH);
+            expect(sheet.getRow(1).getCell(col).font?.bold).toBe(true);
+            expect(fillOf(1, col)).toBe('FF008CD7');
+        }
+
+        for (let row = 1; row <= dataRowCount + 1; row++) {
+            expect(sheet.getRow(row).height).toBe(ROW_HEIGHT);
+            for (let col = 1; col <= columnCount; col++) {
+                expect(sheet.getRow(row).getCell(col).alignment).toMatchObject({ horizontal: 'center', vertical: 'middle' });
+                if (row > 1) {
+                    // 第 1、3… 筆白底，第 2、4… 筆淡藍底
+                    expect(fillOf(row, col)).toBe(row % 2 === 0 ? ODD_ROW_FILL : EVEN_ROW_FILL);
+                }
+            }
+        }
+    };
+
+    it('contains exactly the 待追蹤名單 and 電話名單 sheets, both with frozen headers and auto filters', async () => {
+        const { buffer, loaded } = await loadWorkbook();
+
+        expect(loaded.worksheets.map((sheet) => sheet.name)).toEqual([FOLLOW_UP_SHEET_NAME, PHONE_LIST_SHEET_NAME]);
+
+        const followUpXml = await sheetXml(buffer, 1);
+        const phoneXml = await sheetXml(buffer, 2);
+        // 待追蹤名單 12 欄（A~L）、電話名單 2 欄（A~B），表頭 + 2 筆有效電話
+        expect(followUpXml).toContain('<autoFilter ref="A1:L3"');
+        expect(phoneXml).toContain('<autoFilter ref="A1:B3"');
+        expect(followUpXml).toMatch(/<pane[^>]*ySplit="1"[^>]*state="frozen"/);
+        expect(phoneXml).toMatch(/<pane[^>]*ySplit="1"[^>]*state="frozen"/);
+    });
+
+    it('formats both sheets identically: widths, 25pt rows, centered cells, alternating fills', async () => {
+        const { loaded } = await loadWorkbook([...records, createRecord({ name: '孫第三', phone: '0955000111', note: '' })]);
+
+        expectUniformFormatting(loaded.getWorksheet(FOLLOW_UP_SHEET_NAME)!, 12, 3);
+        expectUniformFormatting(loaded.getWorksheet(PHONE_LIST_SHEET_NAME)!, 2, 3);
+    });
+
+    it('stores phones as text in text format so Excel keeps the leading 0', async () => {
+        const { loaded } = await loadWorkbook();
+        const followUp = loaded.getWorksheet(FOLLOW_UP_SHEET_NAME)!;
+        const phoneList = loaded.getWorksheet(PHONE_LIST_SHEET_NAME)!;
+
+        [followUp.getRow(2).getCell(4), phoneList.getRow(2).getCell(2)].forEach((cell) => {
+            expect(cell.value).toBe('0912345678');
+            expect(cell.type).toBe(ExcelJS.ValueType.String);
+            expect(cell.numFmt).toBe(TEXT_NUM_FMT);
+        });
+
+        expect(phoneList.getRow(1).getCell(1).value).toBe('姓名');
+        expect(phoneList.getRow(1).getCell(2).value).toBe('電話');
+        expect(phoneList.getRow(3).values).toEqual([undefined, '趙極重', '0933111222']);
+        expect(phoneList.rowCount).toBe(3);
+    });
+
+    it('keeps the other column values and formats on the 待追蹤名單 sheet', async () => {
+        const { loaded } = await loadWorkbook();
+        const row = loaded.getWorksheet(FOLLOW_UP_SHEET_NAME)!.getRow(2);
+
         expect(row.getCell(3).value).toBe('王大明');
-        expect(row.getCell(4).value).toBe('0912-345-678'); // 電話保持文字
         expect(row.getCell(2).value).toEqual(new Date(Date.UTC(2025, 0, 5)));
         expect(row.getCell(2).numFmt).toBe('yyyy/mm/dd');
         expect(row.getCell(5).value).toBe(70);
         expect(row.getCell(6).value).toBe(60);
         expect(row.getCell(7).value).toBe(30);
-
-        // 只有明細一個工作表，不再附「報表資訊」
-        expect(loaded.worksheets.map((worksheet) => worksheet.name)).toEqual([FOLLOW_UP_SHEET_NAME]);
     });
 
-    it('formats every cell centered, rows 25pt high, widths 15 / note 150, with alternating row fills', async () => {
-        const threeRecords = [...records, createRecord({ name: '趙極重', note: '' })];
-        const workbook = await createFollowUpWorkbook(threeRecords, { maskNames: false, includePhone: true, includeNote: true }, meta);
-        const loaded = new ExcelJS.Workbook();
-        await loaded.xlsx.load(await workbook.xlsx.writeBuffer() as ArrayBuffer);
-        const sheet = loaded.getWorksheet(FOLLOW_UP_SHEET_NAME)!;
-        const columnCount = 12;
-        const fillOf = (row: number, column: number) =>
-            (sheet.getRow(row).getCell(column).fill as { fgColor?: { argb?: string } }).fgColor?.argb;
+    it('still writes valid sheets when nobody has a valid phone', async () => {
+        const { buffer } = await loadWorkbook([createRecord({ phone: '' })], { ...options, includeNote: false });
 
-        for (let column = 1; column <= columnCount; column++) {
-            const header = sheet.getRow(1).getCell(column).value as string;
-            expect(sheet.getColumn(column).width).toBe(EXPECTED_WIDTHS[header] ?? 15);
-        }
-
-        for (let row = 1; row <= 4; row++) {
-            expect(sheet.getRow(row).height).toBe(ROW_HEIGHT);
-            for (let column = 1; column <= columnCount; column++) {
-                // 含空白儲存格（陳美麗沒有電話、轉介單位、備註）
-                expect(sheet.getRow(row).getCell(column).alignment).toMatchObject({ horizontal: 'center', vertical: 'middle' });
-            }
-        }
-
-        // 表頭品牌藍；第 1、3 筆白底，第 2 筆淡藍底，整列一致
-        expect(fillOf(1, 1)).toBe('FF008CD7');
-        for (let column = 1; column <= columnCount; column++) {
-            expect(fillOf(2, column)).toBe(ODD_ROW_FILL);
-            expect(fillOf(3, column)).toBe(EVEN_ROW_FILL);
-            expect(fillOf(4, column)).toBe(ODD_ROW_FILL);
-        }
-        expect(ODD_ROW_FILL).not.toBe(EVEN_ROW_FILL);
-
-        // 日期格式不因套用置中而遺失
-        expect(sheet.getRow(2).getCell(2).numFmt).toBe('yyyy/mm/dd');
-    });
-
-    it('still writes a valid filter range for an empty list', async () => {
-        const workbook = await createFollowUpWorkbook([], { maskNames: false, includePhone: false, includeNote: false }, meta);
-        const zip = await JSZip.loadAsync(await workbook.xlsx.writeBuffer() as ArrayBuffer);
-        const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
-
-        expect(sheetXml).toContain('<autoFilter ref="A1:J1"');
+        expect(await sheetXml(buffer, 1)).toContain('<autoFilter ref="A1:K1"');
+        expect(await sheetXml(buffer, 2)).toContain('<autoFilter ref="A1:B1"');
     });
 });
 

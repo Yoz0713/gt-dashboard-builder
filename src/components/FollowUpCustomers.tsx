@@ -13,7 +13,7 @@ import {
     SEVERE_PTA_THRESHOLD,
 } from '../utils/analysis';
 import { daysSinceTimestamp, maskCustomerName, maskPhone } from '../utils/display';
-import { downloadFollowUpExcel } from '../utils/followUpExport';
+import { downloadFollowUpExcel, partitionExportableRecords } from '../utils/followUpExport';
 
 /** 大樹聽力中心報告表頭主色（與診所回訪報告一致） */
 const BRAND_BLUE = 'rgb(0, 140, 215)';
@@ -138,6 +138,11 @@ export const FollowUpCustomers: React.FC<FollowUpCustomersProps> = ({
         [dataset, trackingThreshold, activeStore, activeAudiologist, activeDegree, activeSource, keyword, sortBy]
     );
 
+    // Excel 只匯出電話格式正確的客戶，先算好人數讓使用者知道有幾位不會匯出。
+    const exportPartition = useMemo(() => partitionExportableRecords(selected), [selected]);
+    const exportableCount = exportPartition.exportable.length;
+    const skippedExportCount = exportPartition.skipped.length;
+
     const summary = useMemo(
         () => summarizeFollowUpCustomers(selected, dataset, activeStore),
         [selected, dataset, activeStore]
@@ -173,7 +178,6 @@ export const FollowUpCustomers: React.FC<FollowUpCustomersProps> = ({
                 selected,
                 {
                     maskNames,
-                    includePhone: dataset.hasPhoneColumn,
                     includeNote: dataset.hasNoteColumn,
                 },
                 { storeLabel: printedStoreLabel }
@@ -222,7 +226,7 @@ export const FollowUpCustomers: React.FC<FollowUpCustomersProps> = ({
                     <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
                         <button
                             onClick={handleExportExcel}
-                            disabled={exporting || selected.length === 0}
+                            disabled={exporting || exportableCount === 0}
                             className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                         >
                             {exporting ? '產生 Excel 中…' : '📊 匯出 Excel（含篩選）'}
@@ -235,6 +239,15 @@ export const FollowUpCustomers: React.FC<FollowUpCustomersProps> = ({
                         </button>
                     </div>
                 </div>
+                {selected.length > 0 && (
+                    <p data-testid="follow-up-export-hint" className="mt-3 text-xs text-slate-500">
+                        {!dataset.hasPhoneColumn
+                            ? '試算表沒有電話欄位，無法匯出 Excel。'
+                            : skippedExportCount > 0
+                                ? `Excel 只匯出手機號碼正確的 ${exportableCount} 位；另有 ${skippedExportCount} 位沒有電話或號碼格式不符，不會匯出。`
+                                : `Excel 將匯出 ${exportableCount} 位（含「待追蹤名單」與「電話名單」兩個工作表）。`}
+                    </p>
+                )}
                 {exportError && <p className="mt-3 text-sm font-medium text-red-600">{exportError}</p>}
 
                 {/* 追蹤 PTA 閾值 */}

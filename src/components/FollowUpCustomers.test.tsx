@@ -5,7 +5,9 @@ import { FollowUpCustomers } from './FollowUpCustomers';
 import { CompetitionSheetSource, DateRange, SpreadsheetListItem } from '../types';
 import { downloadFollowUpExcel } from '../utils/followUpExport';
 
+// 只替換實際下載，電話驗證等邏輯沿用真實實作。
 jest.mock('../utils/followUpExport', () => ({
+    ...jest.requireActual('../utils/followUpExport'),
     downloadFollowUpExcel: jest.fn(),
 }));
 
@@ -272,8 +274,25 @@ describe('FollowUpCustomers', () => {
         expect(mockedDownloadFollowUpExcel).toHaveBeenCalledTimes(1);
         const [exportedRecords, options, meta] = mockedDownloadFollowUpExcel.mock.calls[0];
         expect(exportedRecords.map((record) => record.name)).toEqual(['趙極重', '王大明']);
-        expect(options).toEqual({ maskNames: true, includePhone: true, includeNote: true });
+        expect(options).toEqual({ maskNames: true, includeNote: true });
         expect(meta).toEqual({ storeLabel: '湖口店' });
+    });
+
+    it('tells the user how many customers will be left out of the Excel for missing / invalid phones', () => {
+        renderList();
+
+        // 趙極重、王大明、陳美麗中只有王大明有手機號碼
+        expect(screen.getByTestId('follow-up-export-hint')).toHaveTextContent(
+            'Excel 只匯出手機號碼正確的 1 位；另有 2 位沒有電話或號碼格式不符，不會匯出。'
+        );
+    });
+
+    it('disables Excel export when no listed customer has a valid phone', () => {
+        renderList({ sources: [zhubei], currentSpreadsheetId: 'zhubei' });
+
+        expect(screen.getAllByTestId('follow-up-row')).toHaveLength(1);
+        expect(screen.getByRole('button', { name: /匯出 Excel/ })).toBeDisabled();
+        expect(screen.getByTestId('follow-up-export-hint')).toHaveTextContent('試算表沒有電話欄位，無法匯出 Excel。');
     });
 
     it('disables Excel export when the list is empty and shows export errors', async () => {
